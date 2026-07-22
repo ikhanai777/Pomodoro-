@@ -1,0 +1,14 @@
+{
+  "name": "Reveal — WebGL Pomodoro",
+  "short_name": "Reveal",
+  "description": "A Pomodoro timer that reveals a magnificent cosmos as you focus.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#03040a",
+  "theme_color": "#03040a",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
