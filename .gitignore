@@ -1,0 +1,7 @@
+# build/test artifacts
+*.log
+__pycache__/
+.tmp/
+# keep app assets; ignore OS junk
+Thumbs.db
+.DS_Store
