@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Reveal — WebGL Pomodoro</title>
+<meta name="theme-color" content="#03040a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<style>
+  :root { --ink: #eef3ff; --muted: #9fb2d8; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #03040a; overflow: hidden;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--ink); }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .hud { position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; pointer-events: none; }
+  .mode { font-size: 13px; letter-spacing: .42em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 14px; opacity: .9; }
+  .ring { position: relative; width: min(64vw, 360px); aspect-ratio: 1; }
+  .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring .track { fill: none; stroke: rgba(255,255,255,.08); stroke-width: 3; }
+  .ring .prog { fill: none; stroke: url(#grad); stroke-width: 4; stroke-linecap: round;
+    transition: stroke-dashoffset .25s linear; filter: drop-shadow(0 0 6px rgba(120,180,255,.6)); }
+  .time { position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; font-size: clamp(40px, 11vw, 76px); font-weight: 600;
+    font-variant-numeric: tabular-nums; letter-spacing: .02em;
+    text-shadow: 0 2px 30px rgba(0,0,0,.6); }
+  .sub { margin-top: 10px; font-size: 12px; color: var(--muted); letter-spacing: .2em; }
+
+  .panel { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 10px; align-items: center; padding: 10px 12px;
+    background: rgba(12,16,30,.42); backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,.08); border-radius: 16px; pointer-events: auto; }
+  .panel button { font: inherit; font-size: 14px; color: var(--ink); cursor: pointer;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.10);
+    padding: 10px 16px; border-radius: 11px; transition: .15s; }
+  .panel button:hover { background: rgba(255,255,255,.14); }
+  .panel button.primary { background: linear-gradient(135deg,#5b8cff,#9b6bff); border: none; font-weight: 600; }
+  .panel button:active { transform: scale(.96); }
+  .presets { display: flex; gap: 6px; }
+  .presets button { padding: 9px 12px; font-size: 12px; opacity: .7; }
+  .presets button.on { opacity: 1; border-color: rgba(140,180,255,.6); background: rgba(120,160,255,.18); }
+  .err { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    text-align: center; padding: 30px; color: #ffb4b4; font-size: 14px; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div class="hud">
+  <div class="mode" id="mode">Focus</div>
+  <div class="ring">
+    <svg viewBox="0 0 120 120">
+      <defs>
+        <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ffd86b"/><stop offset=".5" stop-color="#7aa8ff"/>
+          <stop offset="1" stop-color="#b07bff"/>
+        </linearGradient>
+      </defs>
+      <circle class="track" cx="60" cy="60" r="54"/>
+      <circle class="prog"  cx="60" cy="60" r="54" id="prog"/>
+    </svg>
+    <div class="time" id="time">25:00</div>
+  </div>
+  <div class="sub" id="sub">the cosmos reveals itself as you focus</div>
+</div>
+
+<div class="panel">
+  <div class="presets" id="presets">
+    <button data-w="25" data-b="5" class="on">25 / 5</button>
+    <button data-w="50" data-b="10">50 / 10</button>
+    <button data-w="15" data-b="3">15 / 3</button>
+  </div>
+  <button class="primary" id="start">Start</button>
+  <button id="reset">Reset</button>
+</div>
+
+<div class="err" id="err">WebGL is unavailable in this browser.</div>
+
+<script>
+(function () {
+  "use strict";
+  var canvas = document.getElementById("gl");
+  var gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+  if (!gl) { document.getElementById("err").style.display = "flex"; return; }
+
+  // ---- shaders ----
+  var VERT = [
+    "attribute vec2 p; void main(){ gl_Position = vec4(p,0.0,1.0); }"
+  ].join("\n");
+
+  var FRAG = [
+    "precision highp float;",
+    "uniform vec2 u_res;",
+    "uniform float u_time;",
+    "uniform float u_progress;",   // 0..1 reveal
+    "uniform float u_mode;",        // 0 focus, 1 break (color mood)
+
+    "float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }",
+    "float noise(vec2 p){",
+    "  vec2 i=floor(p); vec2 f=fract(p);",
+    "  float a=hash(i), b=hash(i+vec2(1.0,0.0)), c=hash(i+vec2(0.0,1.0)), d=hash(i+vec2(1.0,1.0));",
+    "  vec2 u=f*f*(3.0-2.0*f);",
+    "  return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);",
+    "}",
+    "float fbm(vec2 p){",
+    "  float v=0.0, a=0.5;",
+    "  for(int i=0;i<6;i++){ v+=a*noise(p); p*=2.02; a*=0.5; }",
+    "  return v;",
+    "}",
+
+    "vec3 scene(vec2 uv, float t, float mood){",
+    "  // base nebula",
+    "  vec2 q = uv*2.4;",
+    "  vec2 w = vec2(fbm(q + t*0.06), fbm(q + vec2(5.2,1.3) - t*0.05));",
+    "  float n = fbm(q + w*2.2);",
+    "  vec3 deep = mix(vec3(0.03,0.05,0.16), vec3(0.10,0.04,0.22), mood);",
+    "  vec3 mid  = vec3(0.45,0.12,0.62);",
+    "  vec3 hot  = vec3(0.10,0.72,0.78);",
+    "  vec3 col = mix(deep, mid, smoothstep(0.2,0.8,n));",
+    "  col = mix(col, hot, smoothstep(0.45,0.95, fbm(q + w*3.0 + t*0.04)));",
+    "  col += 0.35*vec3(1.0,0.78,0.42)*pow(max(n,0.0),3.0);",  // golden glow
+    "  // aurora ribbons",
+    "  float rib = sin((uv.y*6.0) + fbm(uv*3.0 + t*0.1)*4.0 + t*0.2);",
+    "  col += 0.12*vec3(0.4,1.0,0.7)*smoothstep(0.6,1.0,rib)*(1.0-uv.y);",
+    "  // starfield",
+    "  vec2 sp = uv*900.0; vec2 ip = floor(sp); float st = hash(ip);",
+    "  float star = step(0.992, st) * (0.6+0.4*sin(t*3.0 + st*40.0));",
+    "  col += star * vec3(0.9,0.95,1.0);",
+    "  // glowing crescent moon (echoes the EPIC moon) — positioned in [0,1] uv space (upper-left)",
+    "  vec2 m = uv - vec2(0.30, 0.74); m.x *= u_res.x/u_res.y;",
+    "  float d = length(m); float R = 0.17;",
+    "  float disc = smoothstep(R, R-0.006, d);",
+    "  float cut = smoothstep(R, R-0.006, length(m - vec2(0.075,0.02)));",
+    "  float crescent = clamp(disc - cut, 0.0, 1.0);",
+    "  // suppress nebula underneath the moon so it reads clearly",
+    "  col *= (1.0 - crescent*0.9);",
+    "  vec3 moon = vec3(1.0,0.92,0.62);",
+    "  col += crescent * moon * 2.2;",
+    "  // bright halo + soft glow",
+    "  col += smoothstep(R*3.4, R, d) * 0.10 * moon;",
+    "  col += smoothstep(R*1.5, R*0.9, d) * 0.18 * moon * crescent;",
+    "  return col;",
+    "}",
+
+    "void main(){",
+    "  vec2 uv = gl_FragCoord.xy / u_res;",
+    "  float aspect = u_res.x/u_res.y;",
+    "  vec2 c = uv - 0.5; c.x *= aspect;",
+    "  float t = u_time;",
+    "  vec3 full = scene(uv, t, u_mode);",
+    "  // hidden (locked) version: dim, cool, almost black",
+    "  vec3 hidden = full*0.03 + vec3(0.012,0.016,0.03);",
+    "  // iris reveal grows with progress",
+    "  float revealR = u_progress * 1.25;",
+    "  float edge = smoothstep(revealR, revealR-0.04, length(c));",  // 1 inside
+    "  vec3 col = mix(hidden, full, edge);",
+    "  // bright ring at the reveal boundary",
+    "  float ring = smoothstep(0.035, 0.0, abs(length(c) - revealR));",
+    "  col += ring * vec3(0.55,0.8,1.0) * 0.9 * step(0.001, u_progress) * step(u_progress, 0.999);",
+    "  // gentle vignette",
+    "  col *= 1.0 - 0.35*dot(c,c);",
+    "  gl_FragColor = vec4(col, 1.0);",
+    "}"
+  ].join("\n");
+
+  function compile(type, src){
+    var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+      throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  var prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+    throw new Error(gl.getProgramInfoLog(prog));
+  gl.useProgram(prog);
+
+  var buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  var loc = gl.getAttribLocation(prog, "p");
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+  var uRes = gl.getUniformLocation(prog, "u_res");
+  var uTime = gl.getUniformLocation(prog, "u_time");
+  var uProg = gl.getUniformLocation(prog, "u_progress");
+  var uMode = gl.getUniformLocation(prog, "u_mode");
+
+  function resize(){
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.floor(innerWidth * dpr), h = Math.floor(innerHeight * dpr);
+    if (canvas.width !== w || canvas.height !== h){
+      canvas.width = w; canvas.height = h; gl.viewport(0,0,w,h);
+    }
+  }
+  window.addEventListener("resize", resize); resize();
+
+  // ---- timer state ----
+  var WORK = 4, BREAK = 3;
+  var total = WORK, remaining = WORK, mode = 0; // 0 focus, 1 break
+  var running = false, endAt = 0, raf = 0, startedAt = 0;
+
+  var $time = document.getElementById("time");
+  var $mode = document.getElementById("mode");
+  var $sub  = document.getElementById("sub");
+  var $prog = document.getElementById("prog");
+  var $start = document.getElementById("start");
+  var C = 2 * Math.PI * 54;
+  $prog.style.strokeDasharray = C;
+
+  function fmt(s){
+    s = Math.max(0, Math.ceil(s));
+    var m = Math.floor(s/60), ss = s%60;
+    return (m<10?"0":"")+m+":"+(ss<10?"0":"")+ss;
+  }
+  function render(){
+    $time.textContent = fmt(remaining);
+    var p = total>0 ? 1 - remaining/total : 0;
+    $prog.style.strokeDashoffset = C * (1 - p);
+  }
+  function tick(now){
+    if (running){
+      remaining = (endAt - now)/1000;
+      if (remaining <= 0){
+        remaining = 0; render(); phaseComplete(); return;
+      }
+      render();
+    }
+    raf = requestAnimationFrame(tick);
+  }
+  function phaseComplete(){
+    running = false;
+    // switch phase
+    if (mode === 0){ mode = 1; total = BREAK; remaining = BREAK; $mode.textContent = "Break"; $sub.textContent = "rest — the art stays with you"; }
+    else { mode = 0; total = WORK; remaining = WORK; $mode.textContent = "Focus"; $sub.textContent = "the cosmos reveals itself as you focus"; }
+    $start.textContent = "Start"; render();
+    notify();
+  }
+  function notify(){
+    if (navigator.vibrate) navigator.vibrate(180);
+    try {
+      var a = new AudioContext(); var o = a.createOscillator(), g = a.createGain();
+      o.connect(g); g.connect(a.destination); o.type="sine"; o.frequency.value=660;
+      g.gain.setValueAtTime(0.0001,a.currentTime); g.gain.exponentialRampToValueAtTime(0.2,a.currentTime+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+0.6); o.start(); o.stop(a.currentTime+0.65);
+    } catch(e){}
+  }
+
+  $start.addEventListener("click", function(){
+    if (running){ running=false; $start.textContent="Resume"; return; }
+    running = true; $start.textContent = "Pause";
+    endAt = performance.now() + remaining*1000;
+    if (!raf) raf = requestAnimationFrame(tick);
+  });
+  document.getElementById("reset").addEventListener("click", function(){
+    running=false; $start.textContent="Start"; mode=0; total=WORK; remaining=WORK;
+    $mode.textContent="Focus"; $sub.textContent="the cosmos reveals itself as you focus";
+    render();
+  });
+  document.getElementById("presets").addEventListener("click", function(e){
+    var b = e.target.closest("button"); if(!b) return;
+    [].forEach.call(this.children, function(x){ x.classList.remove("on"); });
+    b.classList.add("on");
+    WORK = (+b.dataset.w)*60; BREAK = (+b.dataset.b)*60;
+    running=false; $start.textContent="Start"; mode=0; total=WORK; remaining=WORK;
+    $mode.textContent="Focus"; render();
+  });
+
+  // ---- render loop (shader) ----
+  var t0 = performance.now();
+  function frame(now){
+    resize();
+    var p = total>0 ? 1 - remaining/total : 0;
+    // during break, keep the art fully revealed (p stays 1)
+    var reveal = (mode === 1) ? 1.0 : p;
+    gl.uniform2f(uRes, canvas.width, canvas.height);
+    gl.uniform1f(uTime, (now - t0)/1000);
+    gl.uniform1f(uProg, reveal);
+    gl.uniform1f(uMode, mode);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    requestAnimationFrame(frame);
+  }
+  render();
+  requestAnimationFrame(frame);
+
+  // ---- PWA: register service worker for install + offline ----
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function (e) {
+        console.warn("SW register failed:", e);
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>
