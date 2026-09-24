@@ -249,3 +249,29 @@ def test_finalize_keeps_textured_mesh_whole_and_crops(tmp_path):
     result = list(trimesh.load(out, force="scene").geometry.values())[0]
     assert len(result.faces) == len(big.faces)  # sphere kept whole; speck (<1%) and far box (cropped) removed
     assert any("Cropped" in l for l in job.logs) and any("fragment" in l for l in job.logs)
+
+
+def test_photos_endpoint_saves_uploads_and_queues(client, monkeypatch):
+    c, app_module = client
+    seen = {}
+
+    def fake_run(job):
+        seen["files"] = sorted(p.name for p in (job.dir / "input").iterdir())
+        seen["params"] = job.params
+        out = job.dir / "model.glb"
+        out.write_bytes(b"glTF")
+        return out
+
+    monkeypatch.setattr(app_module.photogrammetry, "availability", lambda: {"available": True, "missing": []})
+    monkeypatch.setattr(app_module.photogrammetry, "run_job", fake_run)
+    files = [("files", (f"../../evil{i}.png", _png(), "image/png")) for i in range(3)]
+    r = c.post("/api/jobs/photos", files=files, data={"quality": "draft", "crop": "false"})
+    assert r.status_code == 200, r.text
+    jid = r.json()["id"]
+    for _ in range(100):
+        if c.get(f"/api/jobs/{jid}").json()["status"] == "done":
+            break
+        time.sleep(0.05)
+    assert seen["files"] == ["0000_evil0.png", "0001_evil1.png", "0002_evil2.png"]  # path parts stripped
+    assert seen["params"]["quality"] == "draft" and seen["params"]["crop"] is False
+    assert c.post("/api/jobs/photos", files=files, data={"quality": "ultra"}).status_code == 400

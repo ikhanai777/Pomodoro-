@@ -43,6 +43,8 @@ COLMAP works out where each photo was taken. OpenMVS then builds a dense point c
 | Standard | up to 80, 1600 px | 30–60 min |
 | High | up to 150, 2400 px, plus mesh refinement | 1–3 h |
 
+For reference, a test scan of 36 photos at Standard took 18 minutes on 4 CPU cores. It produced a 383,000-triangle textured model, cropped to the object.
+
 Shooting tips:
 - Take a photo every 10–15°, in 2–3 rings at different heights.
 - Every part of the object should appear in 3 or more photos.
