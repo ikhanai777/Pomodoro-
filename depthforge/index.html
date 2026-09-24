@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DepthForge — Image to 3D</title>
+<meta name="description" content="Turn any photo into a textured, exportable 3D model in your browser." />
+<meta name="theme-color" content="#0b0d12" />
+<style>
+  :root {
+    --bg: #0b0d12; --panel: #12151d; --panel-2: #181c26; --line: #252a37;
+    --ink: #e9edf5; --muted: #8f98ab; --accent: #6aa8ff; --accent-2: #9b7bff;
+    --ok: #4fd1a5; --warn: #f5b85a; --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 14px/1.45 "Inter", "Segoe UI", system-ui, -apple-system, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+
+  .app { display: grid; grid-template-columns: 340px 1fr; height: 100vh; }
+  aside { background: var(--panel); border-right: 1px solid var(--line);
+    overflow-y: auto; padding: 18px 18px 28px; }
+  main { position: relative; min-width: 0; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .brand svg { width: 28px; height: 28px; }
+  .brand h1 { font-size: 18px; margin: 0; letter-spacing: .01em; }
+  .tagline { color: var(--muted); margin: 0 0 16px; font-size: 13px; }
+
+  .drop { display: block; border: 1.5px dashed var(--line); border-radius: var(--radius);
+    padding: 18px; text-align: center; cursor: pointer; transition: .15s;
+    background: var(--panel-2); }
+  .drop:hover, .drop.over { border-color: var(--accent); background: #1a2233; }
+  .drop strong { display: block; margin-bottom: 2px; }
+  .drop small { color: var(--muted); }
+  .samples { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .samples button { flex: 1; min-width: 0; font-size: 12px; }
+
+  .thumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 4px; }
+  .thumbs figure { margin: 0; background: #07080c; border: 1px solid var(--line);
+    border-radius: 8px; overflow: hidden; aspect-ratio: 1; display: grid; place-items: center; position: relative; }
+  .thumbs canvas { max-width: 100%; max-height: 100%; display: block; }
+  .thumbs figcaption { position: absolute; left: 6px; bottom: 4px; font-size: 11px;
+    color: var(--muted); background: rgba(0,0,0,.55); padding: 1px 6px; border-radius: 4px; }
+
+  section { margin-top: 18px; }
+  section h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .14em;
+    color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+  .seg button { background: none; border: 0; padding: 7px 4px; border-radius: 7px;
+    cursor: pointer; color: var(--muted); font-size: 13px; }
+  .seg button.on { background: #263049; color: var(--ink); }
+
+  .row { display: grid; grid-template-columns: 96px 1fr 42px; align-items: center;
+    gap: 8px; margin: 8px 0; }
+  .row label { color: var(--muted); font-size: 13px; }
+  .row output { text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--muted); font-size: 13px; cursor: pointer; }
+  .check input { accent-color: var(--accent); }
+
+  .btn { background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px;
+    padding: 8px 10px; cursor: pointer; transition: .15s; }
+  .btn:hover:not(:disabled) { border-color: #3a4461; background: #1f2432; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border: 0; color: #fff; font-weight: 600; }
+  .btn.primary:hover:not(:disabled) { background: linear-gradient(135deg, var(--accent), var(--accent-2)); filter: brightness(1.08); }
+  .exports { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+
+  .status { margin-top: 12px; font-size: 12px; color: var(--muted); min-height: 18px; }
+  .status.ok { color: var(--ok); } .status.warn { color: var(--warn); }
+  .bar { height: 4px; background: var(--panel-2); border-radius: 4px; overflow: hidden; margin-top: 6px; display: none; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .2s; }
+  .bar.show { display: block; }
+
+  .hud { position: absolute; top: 14px; left: 14px; right: 14px; display: flex;
+    justify-content: space-between; gap: 10px; pointer-events: none; }
+  .hud > * { pointer-events: auto; }
+  .chip { background: rgba(18,21,29,.72); backdrop-filter: blur(10px);
+    border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: 12px; color: var(--muted); }
+  .hud .seg { background: rgba(18,21,29,.72); backdrop-filter: blur(10px); }
+
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+    color: var(--muted); pointer-events: none; padding: 16px; }
+  .empty h3 { color: var(--ink); font-size: 20px; margin: 0 0 6px; }
+  .hidden { display: none !important; }
+  .modes { margin-bottom: 14px; }
+  .modes button { font-size: 12.5px; padding: 8px 2px; }
+  select { width: 100%; background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; }
+  .field { display: grid; gap: 6px; margin: 10px 0; }
+  .field > span { color: var(--muted); font-size: 13px; }
+  .note { font-size: 12.5px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+  .note.warn { border-color: #5a4a2a; color: var(--warn); }
+  .note code { font-size: 12px; color: var(--ink); }
+  .btn.wide { width: 100%; padding: 10px; margin-top: 6px; }
+  .preview { margin-top: 10px; background: #07080c; border: 1px solid var(--line); border-radius: 8px;
+    aspect-ratio: 4 / 3; display: grid; place-items: center; overflow: hidden; max-width: 100%; }
+  .preview img { max-width: 100%; max-height: 100%; display: block; }
+  .filelist { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  .job { margin-top: 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .job-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-size: 13px; }
+  .job-head b { font-weight: 600; }
+  .job-meta { font-size: 12px; color: var(--muted); margin-top: 4px; min-height: 16px; }
+  .job .bar { display: block; margin-top: 8px; }
+  .job details { margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .job pre { max-height: 180px; overflow: auto; background: #07080c; border-radius: 6px; padding: 8px;
+    font-size: 11px; line-height: 1.35; white-space: pre-wrap; word-break: break-all; margin: 6px 0 0; }
+  .job .btn { font-size: 12px; padding: 4px 10px; }
+  .job.done { border-color: #245a48; } .job.error { border-color: #6a3434; }
+  .job.error .job-meta { color: #ff9b9b; }
+  .tips { font-size: 12.5px; color: var(--muted); padding-left: 18px; margin: 8px 0 0; }
+  .tips li { margin: 3px 0; }
+  .history { display: grid; gap: 4px; margin-top: 6px; }
+  .history button { display: flex; justify-content: space-between; gap: 8px; text-align: left; font-size: 12px; }
+  .history span { color: var(--muted); }
+  .orient { display: flex; gap: 4px; }
+  .orient button { font-size: 12px; padding: 6px 8px; }
+  .foot { margin-top: 22px; color: var(--muted); font-size: 11.5px; }
+  .foot a { color: var(--accent); }
+
+  @media (max-width: 820px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: 56vh auto; height: auto; }
+    main { grid-row: 1; height: 56vh; position: sticky; top: 0; z-index: 2; }
+    aside { grid-row: 2; border-right: 0; border-top: 1px solid var(--line); padding: 16px; }
+    .hud { top: 10px; left: 10px; right: 10px; flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6aa8ff"/><stop offset="1" stop-color="#9b7bff"/></linearGradient></defs><path d="M16 3 28 10v12L16 29 4 22V10z" fill="none" stroke="url(#lg)" stroke-width="2.2" stroke-linejoin="round"/><path d="M4 10l12 7 12-7M16 17v12" fill="none" stroke="url(#lg)" stroke-width="2.2" stroke-linejoin="round"/></svg>
+      <h1>DepthForge</h1>
+    </div>
+    <p class="tagline">Turn images into textured 3D models.</p>
+
+    <div class="seg modes" id="mode" role="tablist" aria-label="Reconstruction mode">
+      <button data-v="relief" class="on" title="Depth relief from one image, runs in the browser">Relief</button>
+      <button data-v="ai" title="Full 360° model from one image (AI, needs the local server)">360° from image</button>
+      <button data-v="scan" title="Photogrammetry from many photos or a video (needs the local server)">Photo scan</button>
+    </div>
+
+    <div id="reliefPanel">
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept="image/*" hidden />
+      <strong>Drop, paste or pick an image</strong>
+      <small>JPG · PNG · WebP — photos of objects, faces, scenes</small>
+    </label>
+    <div class="samples">
+      <button class="btn" data-sample="orb">Sample: orb</button>
+      <button class="btn" data-sample="relief">Sample: relief</button>
+      <button class="btn" data-sample="terrain">Sample: terrain</button>
+    </div>
+
+    <div class="thumbs hidden" id="thumbs">
+      <figure><canvas id="srcThumb"></canvas><figcaption>Image</figcaption></figure>
+      <figure><canvas id="depthThumb"></canvas><figcaption>Depth</figcaption></figure>
+    </div>
+
+    <section>
+      <h2>Depth engine</h2>
+      <div class="seg" id="engine">
+        <button data-v="ai" class="on" title="Depth Anything V2 neural network (downloads ~27 MB once)">AI (Depth Anything)</button>
+        <button data-v="quick" title="Instant heuristic — no download">Quick</button>
+      </div>
+      <div class="bar" id="bar"><i></i></div>
+      <div class="status" id="status">Load an image to begin.</div>
+    </section>
+
+    <section>
+      <h2>Shape</h2>
+      <div class="row"><label for="depth">Depth</label><input type="range" id="depth" min="0" max="1.5" step="0.01" value="0.55"><output></output></div>
+      <div class="row"><label for="detail">Detail</label><input type="range" id="detail" min="64" max="512" step="16" value="256"><output></output></div>
+      <div class="row"><label for="smooth">Smoothing</label><input type="range" id="smooth" min="0" max="8" step="1" value="2"><output></output></div>
+      <div class="row"><label for="gamma">Contrast</label><input type="range" id="gamma" min="0.4" max="2.5" step="0.05" value="1"><output></output></div>
+      <div class="row"><label for="cutout">Background cut</label><input type="range" id="cutout" min="0" max="0.9" step="0.01" value="0"><output></output></div>
+      <div class="row"><label for="tear">Edge tearing</label><input type="range" id="tear" min="0" max="1" step="0.01" value="0.35"><output></output></div>
+      <label class="check"><input type="checkbox" id="invert"> Invert depth (near ↔ far)</label>
+    </section>
+
+    <section>
+      <h2>Volume</h2>
+      <div class="seg" id="back">
+        <button data-v="none" title="Single surface (fastest)">Relief</button>
+        <button data-v="flat" class="on" title="Watertight solid with a flat back — 3D-print ready">Solid</button>
+        <button data-v="mirror" title="Mirror the front to the back for a full-volume object">Full volume</button>
+      </div>
+      <div class="row"><label for="thick">Thickness</label><input type="range" id="thick" min="0.02" max="0.6" step="0.01" value="0.08"><output></output></div>
+    </section>
+    </div>
+
+    <div id="aiPanel" class="hidden">
+      <div class="note warn hidden" id="aiServerNote">This mode needs the DepthForge server running on your computer. Start it with <code>start.bat</code> (Windows) or <code>start.sh</code>, then open <code>http://127.0.0.1:8765</code>.</div>
+      <label class="drop" id="aiDrop">
+        <input type="file" id="aiFile" accept="image/*" hidden />
+        <strong>Drop or pick one image</strong>
+        <small>One object, whole and uncropped. A plain background works best.</small>
+      </label>
+      <div class="preview hidden" id="aiPreview"><img id="aiImg" alt="Selected image" /></div>
+      <section>
+        <h2>AI engine</h2>
+        <label class="field"><span>Engine</span><select id="aiEngine"></select></label>
+        <div class="note hidden" id="aiEngineNote"></div>
+        <label class="field" id="aiResField"><span>Mesh resolution (local engine)</span>
+          <select id="aiRes"><option value="192">192 — faster</option><option value="256" selected>256 — balanced</option><option value="320">320 — finer, slower</option></select></label>
+        <label class="check"><input type="checkbox" id="aiKeepBg"> Keep background (image is already cut out)</label>
+        <button class="btn primary wide" id="aiGo" disabled>Generate 3D model</button>
+      </section>
+      <div class="job hidden" id="aiJob"></div>
+      <p class="note">One image can't show the back of an object, so the AI invents plausible hidden sides. For a model that is accurate on every side, use <b>Photo scan</b>.</p>
+    </div>
+
+    <div id="scanPanel" class="hidden">
+      <div class="note warn hidden" id="scanServerNote">This mode needs the DepthForge server running on your computer. Start it with <code>start.bat</code> (Windows) or <code>start.sh</code>, then open <code>http://127.0.0.1:8765</code>.</div>
+      <div class="note warn hidden" id="scanToolsNote"></div>
+      <label class="drop" id="scanDrop">
+        <input type="file" id="scanFiles" accept="image/*,video/*" multiple hidden />
+        <strong>Drop 20–150 photos or one video</strong>
+        <small>Walk all the way around the object. JPG, PNG, MP4 or MOV.</small>
+      </label>
+      <div class="filelist" id="scanList">No files selected.</div>
+      <section>
+        <h2>Quality</h2>
+        <label class="field"><span>Preset (CPU times for ~50 photos)</span>
+          <select id="scanQuality">
+            <option value="draft">Draft: up to 40 images, about 10–20 min</option>
+            <option value="standard" selected>Standard: up to 80 images, about 30–60 min</option>
+            <option value="high">High: up to 150 images with mesh refinement, 1–3 hours</option>
+          </select></label>
+        <label class="check"><input type="checkbox" id="scanCrop" checked> Crop to the object in the middle of the photos</label>
+        <button class="btn primary wide" id="scanGo" disabled>Start photo scan</button>
+      </section>
+      <div class="job hidden" id="scanJob"></div>
+      <section>
+        <h2>How to shoot</h2>
+        <ul class="tips">
+          <li>Take a photo every 10–15° around the object, in two or three rings at different heights.</li>
+          <li>Keep every part of the object in 3 or more photos. Overlap matters more than photo count.</li>
+          <li>Use soft, even light. Don't use flash, and avoid moving shadows.</li>
+          <li>Matte, textured objects scan best. Shiny, transparent and plain white surfaces fail.</li>
+          <li>Put a newspaper or patterned cloth under the object to help the cameras line up.</li>
+          <li>For video, walk slowly and steadily. The sharpest frames are picked automatically.</li>
+        </ul>
+      </section>
+    </div>
+
+    <section id="historySection" class="hidden">
+      <h2>Recent models</h2>
+      <div class="history" id="history"></div>
+    </section>
+
+    <section>
+      <h2>Look</h2>
+      <div class="row"><label for="light">Light angle</label><input type="range" id="light" min="-180" max="180" step="1" value="35"><output></output></div>
+      <div class="row"><label for="rough">Roughness</label><input type="range" id="rough" min="0" max="1" step="0.01" value="0.75"><output></output></div>
+      <label class="check"><input type="checkbox" id="showcase" checked> Showcase motion</label>
+      <label class="check"><input type="checkbox" id="shadow" checked> Ground shadow</label>
+    </section>
+
+    <section>
+      <h2>Export</h2>
+      <div class="exports">
+        <button class="btn primary" id="exGlb" disabled title="Textured model for web, AR, Blender, Unity">GLB</button>
+        <button class="btn" id="exStl" disabled title="Watertight mesh for 3D printing (mm)">STL</button>
+        <button class="btn" id="exObj" disabled title="Geometry + UVs for any 3D tool">OBJ</button>
+      </div>
+      <div class="status" id="exportStatus"></div>
+    </section>
+
+    <p class="foot">Relief mode runs entirely in your browser. 360° and Photo scan run on the local DepthForge server; only the cloud engines (fal.ai) send your image off this computer.
+      Relief depth model: <a href="https://huggingface.co/onnx-community/depth-anything-v2-small" target="_blank" rel="noopener">Depth Anything V2 Small</a>.</p>
+  </aside>
+
+  <main id="stage">
+    <canvas id="view"></canvas>
+    <div class="empty" id="empty">
+      <div><h3>No model yet</h3><p>Pick an image or try a sample on the left.</p></div>
+    </div>
+    <div class="hud">
+      <div class="seg" id="shade">
+        <button data-v="photo" class="on">Photo</button>
+        <button data-v="clay">Clay</button>
+        <button data-v="depth">Depth</button>
+        <button data-v="wire">Wire</button>
+      </div>
+      <div class="orient hidden" id="orient" aria-label="Fix orientation">
+        <button class="btn" data-rot="x" title="Rotate 90° around X">⟲ X</button>
+        <button class="btn" data-rot="y" title="Rotate 90° around Y">⟲ Y</button>
+        <button class="btn" data-rot="z" title="Rotate 90° around Z">⟲ Z</button>
+      </div>
+      <div class="chip" id="stats">—</div>
+    </div>
+  </main>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+
+const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
+const DEPTH_MODEL = 'onnx-community/depth-anything-v2-small';
+const MAX_TEX = 2048;      // longest side of the colour texture
+const MAX_DEPTH_IN = 1024; // longest side fed to depth estimation
+
+const $ = id => document.getElementById(id);
+const state = {
+  image: null,        // HTMLCanvasElement with the source image (<= MAX_TEX)
+  depth: null,        // { data: Float32Array (0..1, 1 = near), w, h }
+  engine: 'ai',
+  back: 'flat',
+  shade: 'photo',
+  mode: 'relief',     // relief | ai | scan
+  models: { ai: null, scan: null }, // loaded full models: { root, jobId }
+};
+
+/* ---------------- UI helpers ---------------- */
+function setStatus(msg, kind = '') {
+  const el = $('status'); el.textContent = msg; el.className = 'status ' + kind;
+}
+function setProgress(p) {
+  const bar = $('bar');
+  if (p == null) { bar.classList.remove('show'); return; }
+  bar.classList.add('show'); bar.firstElementChild.style.width = (p * 100).toFixed(1) + '%';
+}
+function bindSeg(id, key, onChange) {
+  $(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    for (const x of $(id).children) x.classList.toggle('on', x === b);
+    state[key] = b.dataset.v; onChange();
+  });
+}
+const sliders = ['depth', 'detail', 'smooth', 'gamma', 'cutout', 'tear', 'thick', 'light', 'rough'];
+const val = id => parseFloat($(id).value);
+for (const id of sliders) {
+  const input = $(id), out = input.parentElement.querySelector('output');
+  const show = () => { out.textContent = id === 'light' ? input.value + '°' : input.value; };
+  show(); input.addEventListener('input', show);
+}
+
+/* ---------------- three.js scene ---------------- */
+const canvas = $('view');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0d12);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.55;
+
+const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
+camera.position.set(0, 0.15, 4.2);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.minDistance = 1; controls.maxDistance = 12;
+
+const key = new THREE.DirectionalLight(0xffffff, 2.2);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = key.shadow.camera.bottom = -3;
+key.shadow.camera.right = key.shadow.camera.top = 3;
+key.shadow.bias = -0.0005; key.shadow.normalBias = 0.02;
+scene.add(key, key.target);
+scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x20242c, 0.35));
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), new THREE.ShadowMaterial({ opacity: 0.35 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+scene.add(ground);
+
+const pivot = new THREE.Group(); scene.add(pivot);
+const material = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0.0, side: THREE.DoubleSide });
+let mesh = null, colorTex = null, depthTex = null;
+
+function placeLight() {
+  const a = THREE.MathUtils.degToRad(val('light'));
+  key.position.set(Math.sin(a) * 4, 3.2, Math.cos(a) * 4);
+}
+placeLight();
+
+function resize() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width / Math.max(1, r.height); camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(canvas.parentElement);
+resize();
+
+const clock = new THREE.Clock();
+let showT = 0;
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  if ($('showcase').checked) {
+    showT += dt;
+    if (state.mode === 'relief') { if (mesh) pivot.rotation.y = Math.sin(showT * 0.6) * 0.45; }
+    else if (state.models[state.mode]) pivot.rotation.y += dt * 0.35; // full models turn all the way round
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+/* ---------------- image loading ---------------- */
+function fitCanvas(src, w, h, max) {
+  const s = Math.min(1, max / Math.max(w, h));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
+  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+async function loadFile(file) {
+  if (!file || !file.type.startsWith('image/')) { setStatus('That file is not an image.', 'warn'); return; }
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  await useImage(fitCanvas(bmp, bmp.width, bmp.height, MAX_TEX));
+}
+async function useImage(c) {
+  state.image = c;
+  const t = $('srcThumb'); const tc = fitCanvas(c, c.width, c.height, 256);
+  t.width = tc.width; t.height = tc.height; t.getContext('2d').drawImage(tc, 0, 0);
+  $('thumbs').classList.remove('hidden');
+  if (colorTex) colorTex.dispose();
+  colorTex = new THREE.CanvasTexture(c);
+  colorTex.colorSpace = THREE.SRGBColorSpace;
+  colorTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  await estimateDepth();
+}
+
+$('file').addEventListener('change', e => loadFile(e.target.files[0]));
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => loadFile(e.dataTransfer.files[0]));
+document.getElementById('stage').addEventListener('dragover', e => e.preventDefault());
+document.getElementById('stage').addEventListener('drop', e => { e.preventDefault(); loadFile(e.dataTransfer.files[0]); });
+window.addEventListener('paste', e => {
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+  if (item) loadFile(item.getAsFile());
+});
+
+/* ---------------- procedural samples (work offline) ---------------- */
+function makeSample(kind) {
+  const W = 768, H = 768, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  if (kind === 'orb') {
+    const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#2b3350'); bg.addColorStop(1, '#0d1020');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    const r = g.createRadialGradient(W * .4, H * .38, 20, W / 2, H / 2, 280);
+    r.addColorStop(0, '#fff3d6'); r.addColorStop(.25, '#ffb347'); r.addColorStop(.75, '#c2410c'); r.addColorStop(1, '#3b0d02');
+    g.fillStyle = r; g.beginPath(); g.arc(W / 2, H / 2, 270, 0, Math.PI * 2); g.fill();
+  } else if (kind === 'relief') {
+    g.fillStyle = '#b89b72'; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 9000; i++) { g.fillStyle = `rgba(${90 + Math.random() * 80},${70 + Math.random() * 60},40,.08)`; g.fillRect(Math.random() * W, Math.random() * H, 3, 3); }
+    g.translate(W / 2, H / 2);
+    for (let k = 0; k < 12; k++) {
+      g.rotate(Math.PI / 6);
+      const petal = g.createRadialGradient(0, -170, 5, 0, -170, 110);
+      petal.addColorStop(0, '#f1e0bf'); petal.addColorStop(1, '#8a6a42');
+      g.fillStyle = petal; g.beginPath(); g.ellipse(0, -170, 48, 110, 0, 0, Math.PI * 2); g.fill();
+    }
+    const core = g.createRadialGradient(-20, -20, 5, 0, 0, 90);
+    core.addColorStop(0, '#fff6e2'); core.addColorStop(1, '#7a5a34');
+    g.fillStyle = core; g.beginPath(); g.arc(0, 0, 85, 0, Math.PI * 2); g.fill();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+  } else {
+    const img = g.createImageData(W, H), d = img.data;
+    const n = (x, y) => Math.sin(x * 0.011) * Math.cos(y * 0.013) + 0.5 * Math.sin(x * 0.031 + y * 0.017) + 0.25 * Math.cos(x * 0.071 - y * 0.053);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const h = (n(x, y) + 1.75) / 3.5, i = (y * W + x) * 4;
+      const col = h < .38 ? [30, 80, 150] : h < .45 ? [210, 190, 130] : h < .7 ? [60 + h * 60, 130 + h * 40, 60] : h < .82 ? [120, 105, 90] : [240, 240, 245];
+      const s = 0.75 + h * 0.35;
+      d[i] = col[0] * s; d[i + 1] = col[1] * s; d[i + 2] = col[2] * s; d[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+  }
+  return c;
+}
+document.querySelectorAll('[data-sample]').forEach(b => b.addEventListener('click', () => useImage(makeSample(b.dataset.sample))));
+
+/* ---------------- depth estimation ---------------- */
+let depthPipe = null, depthPipePromise = null;
+async function getDepthPipe() {
+  if (depthPipe) return depthPipe;
+  if (!depthPipePromise) depthPipePromise = (async () => {
+    const { pipeline, env } = await import(TRANSFORMERS_URL);
+    env.allowLocalModels = false;
+    const files = new Map();
+    const progress_callback = p => {
+      if (p.status === 'progress' && p.total) {
+        files.set(p.file, [p.loaded, p.total]);
+        let a = 0, b = 0; for (const [l, t] of files.values()) { a += l; b += t; }
+        setProgress(a / b); setStatus(`Downloading depth model… ${(a / 1048576).toFixed(1)} / ${(b / 1048576).toFixed(1)} MB`);
+      }
+    };
+    const attempts = navigator.gpu ? [{ device: 'webgpu', dtype: 'fp32' }, { device: 'wasm', dtype: 'q8' }] : [{ device: 'wasm', dtype: 'q8' }];
+    let lastErr;
+    for (const opt of attempts) {
+      try {
+        const p = await pipeline('depth-estimation', DEPTH_MODEL, { ...opt, progress_callback });
+        p.__device = opt.device; return p;
+      } catch (err) { lastErr = err; console.warn('depth pipeline failed on', opt.device, err); }
+    }
+    throw lastErr;
+  })();
+  try { depthPipe = await depthPipePromise; return depthPipe; }
+  catch (e) { depthPipePromise = null; throw e; }
+}
+
+async function aiDepth(c) {
+  const pipe = await getDepthPipe();
+  setProgress(null); setStatus(`Estimating depth on ${pipe.__device === 'webgpu' ? 'GPU' : 'CPU'}…`);
+  const small = fitCanvas(c, c.width, c.height, MAX_DEPTH_IN);
+  const t0 = performance.now();
+  const { depth } = await pipe(small.toDataURL('image/png'));
+  const n = depth.width * depth.height, out = new Float32Array(n), ch = depth.channels || 1;
+  for (let i = 0; i < n; i++) out[i] = depth.data[i * ch] / 255;
+  return { data: out, w: depth.width, h: depth.height, ms: performance.now() - t0 };
+}
+
+// Instant fallback: brightness-shading + saliency-style centre prior + edge-preserving blur.
+function quickDepth(c) {
+  const s = fitCanvas(c, c.width, c.height, 384), w = s.width, h = s.height;
+  const px = s.getContext('2d').getImageData(0, 0, w, h).data, n = w * h;
+  const lum = new Float32Array(n), sat = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const r = px[i * 4] / 255, g = px[i * 4 + 1] / 255, b = px[i * 4 + 2] / 255;
+    lum[i] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    sat[i] = Math.max(r, g, b) - Math.min(r, g, b);
+  }
+  // Colour distance from the border average: things unlike the frame edge are likely foreground.
+  let br = 0, bg = 0, bb = 0, bn = 0;
+  for (let x = 0; x < w; x++) for (const y of [0, h - 1]) { const i = (y * w + x) * 4; br += px[i]; bg += px[i + 1]; bb += px[i + 2]; bn++; }
+  for (let y = 0; y < h; y++) for (const x of [0, w - 1]) { const i = (y * w + x) * 4; br += px[i]; bg += px[i + 1]; bb += px[i + 2]; bn++; }
+  br /= bn; bg /= bn; bb /= bn;
+  const fg = new Float32Array(n);
+  for (let i = 0; i < n; i++) fg[i] = Math.hypot(px[i * 4] - br, px[i * 4 + 1] - bg, px[i * 4 + 2] - bb) / 441;
+  const fgB = blur(fg, w, h, Math.round(Math.max(w, h) / 40), 3);
+  const lumB = blur(lum, w, h, Math.round(Math.max(w, h) / 90), 2);
+  const out = new Float32Array(n);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x, dx = x / w - 0.5, dy = y / h - 0.5;
+    const centre = 1 - Math.min(1, Math.hypot(dx, dy) * 1.5);
+    out[i] = 0.45 * Math.min(1, fgB[i] * 2.2) + 0.35 * lumB[i] + 0.2 * centre + 0.05 * sat[i];
+  }
+  normalize(out);
+  return { data: out, w, h, ms: 0 };
+}
+
+async function estimateDepth() {
+  if (!state.image) return;
+  $('empty').classList.add('hidden');
+  const token = (estimateDepth.token = (estimateDepth.token || 0) + 1);
+  let d;
+  if (state.engine === 'ai') {
+    try {
+      setStatus('Loading depth model…');
+      d = await aiDepth(state.image);
+      if (token !== estimateDepth.token) return;
+      setStatus(`AI depth ready in ${(d.ms / 1000).toFixed(1)} s (${d.w}×${d.h}).`, 'ok');
+    } catch (err) {
+      console.error(err);
+      if (token !== estimateDepth.token) return;
+      d = quickDepth(state.image);
+      setStatus('AI model unavailable (offline?) — used Quick depth instead.', 'warn');
+    }
+    setProgress(null);
+  } else {
+    d = quickDepth(state.image);
+    setStatus('Quick depth estimate ready. Switch to AI for photoreal geometry.', 'ok');
+  }
+  state.depth = d;
+  drawDepthThumb();
+  rebuild();
+}
+
+function drawDepthThumb() {
+  const d = state.depth, c = document.createElement('canvas'); c.width = d.w; c.height = d.h;
+  const g = c.getContext('2d'), img = g.createImageData(d.w, d.h);
+  for (let i = 0; i < d.data.length; i++) { const v = d.data[i] * 255; img.data.set([v, v, v, 255], i * 4); }
+  g.putImageData(img, 0, 0);
+  const t = $('depthThumb'), tc = fitCanvas(c, c.width, c.height, 256);
+  t.width = tc.width; t.height = tc.height; t.getContext('2d').drawImage(tc, 0, 0);
+}
+
+/* ---------------- field processing ---------------- */
+function normalize(a) {
+  let lo = Infinity, hi = -Infinity;
+  for (const v of a) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  const r = hi - lo || 1; for (let i = 0; i < a.length; i++) a[i] = (a[i] - lo) / r;
+  return a;
+}
+// Separable box blur, repeated `passes` times (≈ gaussian).
+function blur(src, w, h, radius, passes) {
+  if (radius < 1 || passes < 1) return src.slice();
+  let a = src.slice(), b = new Float32Array(a.length);
+  for (let p = 0; p < passes; p++) {
+    for (let y = 0; y < h; y++) {
+      let acc = 0; const row = y * w;
+      for (let x = -radius; x <= radius; x++) acc += a[row + Math.min(w - 1, Math.max(0, x))];
+      for (let x = 0; x < w; x++) {
+        b[row + x] = acc / (2 * radius + 1);
+        acc += a[row + Math.min(w - 1, x + radius + 1)] - a[row + Math.max(0, x - radius)];
+      }
+    }
+    for (let x = 0; x < w; x++) {
+      let acc = 0;
+      for (let y = -radius; y <= radius; y++) acc += b[Math.min(h - 1, Math.max(0, y)) * w + x];
+      for (let y = 0; y < h; y++) {
+        a[y * w + x] = acc / (2 * radius + 1);
+        acc += b[Math.min(h - 1, y + radius + 1) * w + x] - b[Math.max(0, y - radius) * w + x];
+      }
+    }
+  }
+  return a;
+}
+function resample(d, gw, gh) {
+  const out = new Float32Array(gw * gh);
+  for (let j = 0; j < gh; j++) {
+    const fy = (j / (gh - 1)) * (d.h - 1), y0 = Math.floor(fy), y1 = Math.min(d.h - 1, y0 + 1), ty = fy - y0;
+    for (let i = 0; i < gw; i++) {
+      const fx = (i / (gw - 1)) * (d.w - 1), x0 = Math.floor(fx), x1 = Math.min(d.w - 1, x0 + 1), tx = fx - x0;
+      const a = d.data[y0 * d.w + x0], b = d.data[y0 * d.w + x1], c = d.data[y1 * d.w + x0], e = d.data[y1 * d.w + x1];
+      out[j * gw + i] = (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + e * tx) * ty;
+    }
+  }
+  return out;
+}
+
+/* ---------------- mesh generation ---------------- */
+function buildGeometry() {
+  const d = state.depth, img = state.image;
+  const aspect = img.width / img.height, res = val('detail');
+  const gw = aspect >= 1 ? res : Math.max(8, Math.round(res * aspect));
+  const gh = aspect >= 1 ? Math.max(8, Math.round(res / aspect)) : res;
+  const W = aspect >= 1 ? 2 : 2 * aspect, H = aspect >= 1 ? 2 / aspect : 2;
+
+  let f = resample(d, gw, gh);
+  const sm = val('smooth'); if (sm > 0) f = blur(f, gw, gh, 1, sm);
+  const gamma = val('gamma'), invert = $('invert').checked;
+  for (let i = 0; i < f.length; i++) { let v = invert ? 1 - f[i] : f[i]; f[i] = Math.pow(Math.min(1, Math.max(0, v)), gamma); }
+
+  const strength = val('depth'), cut = val('cutout'), tear = val('tear');
+  const tearLimit = tear <= 0 ? Infinity : (1.02 - tear) * 0.35 * Math.max(strength, 1e-3) * (256 / res + 0.5);
+  const n = gw * gh;
+  const pos = new Float32Array(n * 3), uv = new Float32Array(n * 2), keep = new Uint8Array(n);
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+    const k = j * gw + i, u = i / (gw - 1), v = j / (gh - 1);
+    pos[k * 3] = (u - 0.5) * W; pos[k * 3 + 1] = (0.5 - v) * H; pos[k * 3 + 2] = f[k] * strength;
+    uv[k * 2] = u; uv[k * 2 + 1] = 1 - v;
+    keep[k] = f[k] >= cut ? 1 : 0;
+  }
+
+  // Front triangles, dropping background and stretched "curtain" faces at depth discontinuities.
+  const tris = [];
+  const ok = (a, b, c) => {
+    if (!keep[a] || !keep[b] || !keep[c]) return false;
+    const za = pos[a * 3 + 2], zb = pos[b * 3 + 2], zc = pos[c * 3 + 2];
+    return Math.max(za, zb, zc) - Math.min(za, zb, zc) <= tearLimit;
+  };
+  for (let j = 0; j < gh - 1; j++) for (let i = 0; i < gw - 1; i++) {
+    const a = j * gw + i, b = a + 1, c = a + gw, e = c + 1; // a b / c e  (rows go downward)
+    if (ok(a, c, b)) tris.push(a, c, b);
+    if (ok(b, c, e)) tris.push(b, c, e);
+  }
+
+  // Compact to used vertices.
+  const remap = new Int32Array(n).fill(-1); let nv = 0;
+  for (const t of tris) if (remap[t] < 0) remap[t] = nv++;
+  const P = [], U = [], front = [];
+  const zFront = new Float32Array(nv);
+  for (let k = 0; k < n; k++) if (remap[k] >= 0) {
+    const r = remap[k];
+    P[r * 3] = pos[k * 3]; P[r * 3 + 1] = pos[k * 3 + 1]; P[r * 3 + 2] = pos[k * 3 + 2];
+    U[r * 2] = uv[k * 2]; U[r * 2 + 1] = uv[k * 2 + 1];
+    zFront[r] = pos[k * 3 + 2];
+  }
+  for (const t of tris) front.push(remap[t]);
+  const idx = front.slice();
+
+  if (state.back !== 'none' && nv > 0) {
+    const thick = val('thick');
+    let zMin = Infinity; for (const z of zFront) zMin = Math.min(zMin, z);
+    const backZ = z => state.back === 'flat' ? zMin - thick : -(z - zMin) - thick + zMin;
+    // Back vertices (duplicated), reversed winding.
+    const off = nv;
+    for (let r = 0; r < nv; r++) {
+      P.push(P[r * 3], P[r * 3 + 1], backZ(zFront[r])); U.push(U[r * 2], U[r * 2 + 1]);
+    }
+    for (let t = 0; t < front.length; t += 3) idx.push(front[t] + off, front[t + 2] + off, front[t + 1] + off);
+    // Side walls along boundary edges (edges used by exactly one front triangle).
+    const edges = new Map();
+    for (let t = 0; t < front.length; t += 3) for (let s = 0; s < 3; s++) {
+      const a = front[t + s], b = front[t + (s + 1) % 3], key = a < b ? a * nv + b : b * nv + a;
+      const e = edges.get(key); if (e) e.n++; else edges.set(key, { a, b, n: 1 });
+    }
+    let vi = P.length / 3;
+    for (const { a, b, n: cnt } of edges.values()) {
+      if (cnt !== 1) continue;
+      // Own vertices so walls get crisp normals: a, b (front), a', b' (back).
+      for (const r of [a, b]) { P.push(P[r * 3], P[r * 3 + 1], P[r * 3 + 2]); U.push(U[r * 2], U[r * 2 + 1]); }
+      for (const r of [a, b]) { P.push(P[r * 3], P[r * 3 + 1], backZ(zFront[r])); U.push(U[r * 2], U[r * 2 + 1]); }
+      const A = vi, B = vi + 1, A2 = vi + 2, B2 = vi + 3; vi += 4;
+      idx.push(A, A2, B, B, A2, B2);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  geo.computeBoundingBox();
+  // Depth texture for the "Depth" shading mode.
+  const dc = new Uint8Array(gw * gh * 4);
+  for (let k = 0; k < gw * gh; k++) { const v = f[k] * 255; dc[k * 4] = v; dc[k * 4 + 1] = v; dc[k * 4 + 2] = v; dc[k * 4 + 3] = 255; }
+  if (depthTex) depthTex.dispose();
+  depthTex = new THREE.DataTexture(dc, gw, gh); depthTex.flipY = true; depthTex.needsUpdate = true;
+  depthTex.colorSpace = THREE.SRGBColorSpace;
+  return { geo, tris: idx.length / 3, verts: P.length / 3, W, H };
+}
+
+let rebuildQueued = false, reliefGroundY = -1.03;
+function rebuild() {
+  if (!state.depth || rebuildQueued) return;
+  rebuildQueued = true;
+  requestAnimationFrame(() => {
+    rebuildQueued = false;
+    const t0 = performance.now();
+    const { geo, tris, verts, H } = buildGeometry();
+    if (mesh) { mesh.geometry.dispose(); } else {
+      mesh = new THREE.Mesh(geo, material); mesh.castShadow = true; mesh.receiveShadow = true; pivot.add(mesh);
+    }
+    mesh.geometry = geo;
+    const bb = geo.boundingBox;
+    mesh.position.z = bb.isEmpty() ? 0 : -(bb.min.z + bb.max.z) / 2;
+    reliefGroundY = -H / 2 - 0.03;
+    mesh.visible = state.mode === 'relief';
+    if (state.mode !== 'relief') return; // depth finished after the user switched modes
+    ground.position.y = reliefGroundY;
+    applyShade();
+    $('stats').textContent = `${tris.toLocaleString()} triangles · ${verts.toLocaleString()} vertices · ${(performance.now() - t0).toFixed(0)} ms`;
+    updateExportButtons();
+  });
+}
+
+const origMat = new WeakMap(); // mesh -> its own material, restored after Clay/Wire views
+const clayMat = new THREE.MeshStandardMaterial({ color: 0xd9d4cc, roughness: 0.75, metalness: 0 });
+const wireMat = new THREE.MeshBasicMaterial({ color: 0x8fb4ff, wireframe: true });
+function applyShade() {
+  const model = state.models[state.mode];
+  if (model) {
+    clayMat.roughness = val('rough');
+    model.root.traverse(o => {
+      if (!o.isMesh) return;
+      o.material = state.shade === 'clay' ? clayMat : state.shade === 'wire' ? wireMat : origMat.get(o);
+    });
+    return;
+  }
+  material.wireframe = state.shade === 'wire';
+  material.map = state.shade === 'photo' ? colorTex : state.shade === 'depth' ? depthTex : null;
+  material.color.set(state.shade === 'clay' ? 0xd9d4cc : state.shade === 'wire' ? 0x8fb4ff : 0xffffff);
+  material.roughness = val('rough');
+  material.needsUpdate = true;
+}
+
+/* ---------------- wiring ---------------- */
+bindSeg('engine', 'engine', estimateDepth);
+bindSeg('back', 'back', rebuild);
+bindSeg('shade', 'shade', applyShade);
+for (const id of ['depth', 'detail', 'smooth', 'gamma', 'cutout', 'tear', 'thick']) $(id).addEventListener('input', rebuild);
+$('invert').addEventListener('change', rebuild);
+$('light').addEventListener('input', placeLight);
+$('rough').addEventListener('input', applyShade);
+$('shadow').addEventListener('change', e => { ground.visible = e.target.checked; });
+$('showcase').addEventListener('change', e => { if (!e.target.checked) pivot.rotation.y = 0; });
+
+/* ---------------- export ---------------- */
+function download(data, name, type) {
+  const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+function exportMesh() {
+  const model = state.models[state.mode];
+  if (model) {
+    // Full model: export with its original materials and any orientation fixes baked in.
+    const src = model.root.children[0], copy = src.clone(true), mats = [];
+    src.traverse(o => { if (o.isMesh) mats.push(origMat.get(o)); });
+    let i = 0;
+    copy.traverse(o => { if (o.isMesh) o.material = mats[i++]; });
+    const wrap = new THREE.Group(); wrap.add(copy); wrap.name = 'DepthForgeModel';
+    return wrap;
+  }
+  // Relief: export a clean, un-animated copy with the photo texture.
+  const m = new THREE.Mesh(mesh.geometry, new THREE.MeshStandardMaterial({ map: colorTex, roughness: val('rough'), metalness: 0, side: state.back === 'none' ? THREE.DoubleSide : THREE.FrontSide }));
+  m.position.copy(mesh.position); m.name = 'DepthForgeModel';
+  return m;
+}
+async function runExport(label, fn) {
+  const btns = ['exGlb', 'exStl', 'exObj'].map($);
+  const say = (msg, kind = '') => { const el = $('exportStatus'); el.textContent = msg; el.className = 'status ' + kind; };
+  btns.forEach(b => (b.disabled = true));
+  say(`Exporting ${label}…`);
+  await new Promise(r => setTimeout(r, 30)); // let the status paint
+  try { const note = await fn(); say(note || `${label} exported.`, note ? 'warn' : 'ok'); }
+  catch (err) { console.error(err); say(`${label} export failed: ${err.message}`, 'warn'); }
+  finally { updateExportButtons(); }
+}
+$('exGlb').addEventListener('click', () => runExport('GLB', async () => {
+  const glb = await new GLTFExporter().parseAsync(exportMesh(), { binary: true, maxTextureSize: MAX_TEX });
+  download(glb, 'depthforge-model.glb', 'model/gltf-binary');
+}));
+$('exStl').addEventListener('click', () => runExport('STL', () => {
+  const m = exportMesh();
+  const size = new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3());
+  m.scale.setScalar(100 / Math.max(size.x, size.y, size.z, 1e-6)); // longest side → 100 mm
+  download(new STLExporter().parse(m, { binary: true }), 'depthforge-model.stl', 'model/stl');
+  if (state.mode === 'relief' && state.back === 'none') return 'STL saved — tip: choose “Solid” volume for a watertight, printable mesh.';
+}));
+$('exObj').addEventListener('click', () => runExport('OBJ', () =>
+  download(new OBJExporter().parse(exportMesh()), 'depthforge-model.obj', 'text/plain')));
+
+/* ---------------- full 3D modes (local server) ---------------- */
+let server = null; // /api/health response, or null when no server is reachable
+const JOB_KEY = m => 'depthforge.job.' + m;
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* storage blocked */ } },
+};
+
+function updateExportButtons() {
+  const ready = state.mode === 'relief' ? !!(mesh && mesh.geometry.index && mesh.geometry.index.count) : !!state.models[state.mode];
+  for (const id of ['exGlb', 'exStl', 'exObj']) $(id).disabled = !ready;
+}
+
+function setMode(m) {
+  state.mode = m;
+  for (const b of $('mode').children) b.classList.toggle('on', b.dataset.v === m);
+  $('reliefPanel').classList.toggle('hidden', m !== 'relief');
+  $('aiPanel').classList.toggle('hidden', m !== 'ai');
+  $('scanPanel').classList.toggle('hidden', m !== 'scan');
+  $('historySection').classList.toggle('hidden', m === 'relief' || !server);
+  // Only the current mode's model is in the scene.
+  if (mesh) mesh.visible = m === 'relief';
+  for (const [k, v] of Object.entries(state.models)) if (v) v.root.visible = k === m;
+  pivot.rotation.y = 0;
+  $('shade').querySelector('[data-v="depth"]').classList.toggle('hidden', m !== 'relief');
+  if (m !== 'relief' && state.shade === 'depth') $('shade').querySelector('[data-v="photo"]').click();
+  $('orient').classList.toggle('hidden', m === 'relief' || !state.models[m]);
+  const has = m === 'relief' ? !!state.image : !!state.models[m];
+  $('empty').classList.toggle('hidden', has);
+  $('empty').querySelector('p').textContent = m === 'relief' ? 'Pick an image or try a sample on the left.'
+    : m === 'ai' ? 'Pick one image and generate a full 360° model.' : 'Add photos or a video taken all around an object.';
+  if (m === 'relief') ground.position.y = reliefGroundY;
+  else if (state.models[m]) placeGroundUnder(state.models[m].root);
+  refreshStats(); applyShade(); updateExportButtons();
+  if (m !== 'relief') loadHistory();
+}
+$('mode').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.v); });
+
+function refreshStats() {
+  const model = state.models[state.mode];
+  if (state.mode === 'relief' || !model) { if (state.mode !== 'relief') $('stats').textContent = '—'; return; }
+  let tris = 0;
+  model.root.traverse(o => { if (o.isMesh) { const g = o.geometry; tris += (g.index ? g.index.count : g.attributes.position.count) / 3; } });
+  $('stats').textContent = `${Math.round(tris).toLocaleString()} triangles · full 360° model`;
+}
+
+function placeGroundUnder(root) {
+  const box = new THREE.Box3().setFromObject(root);
+  ground.position.y = box.min.y - 0.01;
+}
+
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); // opens gltfpack-compressed files too
+async function showModel(mode, url, jobId) {
+  const gltf = await loader.loadAsync(url);
+  const root = new THREE.Group();
+  root.add(gltf.scene);
+  // Fit: centre and scale so the longest side is 2 units, like the relief.
+  const box = new THREE.Box3().setFromObject(gltf.scene);
+  const size = box.getSize(new THREE.Vector3()), centre = box.getCenter(new THREE.Vector3());
+  const s = 2 / Math.max(size.x, size.y, size.z, 1e-6);
+  gltf.scene.position.sub(centre); root.scale.setScalar(s);
+  gltf.scene.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = o.receiveShadow = true;
+    origMat.set(o, o.material);
+    for (const mt of [].concat(o.material)) { if (mt.map) mt.map.anisotropy = renderer.capabilities.getMaxAnisotropy(); mt.side = THREE.DoubleSide; }
+  });
+  const old = state.models[mode];
+  if (old) { pivot.remove(old.root); old.root.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); }
+  state.models[mode] = { root, jobId };
+  pivot.add(root);
+  controls.target.set(0, 0, 0); camera.position.set(0, 0.6, 4.2);
+  setMode(state.mode);
+}
+
+$('orient').addEventListener('click', e => {
+  const b = e.target.closest('button'); const model = state.models[state.mode]; if (!b || !model) return;
+  const axis = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[b.dataset.rot];
+  const inner = model.root.children[0];
+  inner.applyMatrix4(new THREE.Matrix4().makeRotationAxis(axis, Math.PI / 2));
+  // Re-centre after rotating.
+  const box = new THREE.Box3().setFromObject(inner);
+  inner.position.sub(box.getCenter(new THREE.Vector3()));
+  placeGroundUnder(model.root);
+});
+
+async function api(path, opts) {
+  const r = await fetch('api/' + path, opts);
+  let body = null;
+  try { body = await r.json(); } catch { /* not JSON */ }
+  if (!r.ok) throw new Error(body?.detail || `Server error ${r.status}`);
+  return body;
+}
+
+async function checkServer() {
+  try { server = await api('health'); } catch { server = null; }
+  $('aiServerNote').classList.toggle('hidden', !!server);
+  $('scanServerNote').classList.toggle('hidden', !!server);
+  const sel = $('aiEngine'); sel.innerHTML = '';
+  if (server) {
+    const img = server.engines.image;
+    const order = ['triposr-local', 'fal-hunyuan3d', 'fal-trellis', 'fal-triposr'];
+    for (const id of order.filter(k => img[k]).concat(Object.keys(img).filter(k => !order.includes(k)))) {
+      const o = document.createElement('option');
+      o.value = id; o.textContent = img[id].label + (img[id].available ? '' : ' (not set up)');
+      sel.appendChild(o);
+    }
+    const firstReady = order.find(k => img[k]?.available);
+    if (firstReady) sel.value = firstReady;
+    const pg = server.engines.photos.photogrammetry;
+    $('scanToolsNote').classList.toggle('hidden', pg.available);
+    $('scanToolsNote').textContent = pg.available ? '' : `Photogrammetry tools not found: ${pg.missing.join(', ')}. Run setup.ps1 (Windows) or see the README.`;
+  }
+  onEngineChange(); updateGoButtons();
+  for (const m of ['ai', 'scan']) { const id = store.get(JOB_KEY(m)); if (server && id) pollJob(m, id); }
+}
+
+function onEngineChange() {
+  const id = $('aiEngine').value, info = server?.engines.image[id];
+  $('aiEngineNote').classList.toggle('hidden', !info || info.available);
+  $('aiEngineNote').textContent = info && !info.available ? info.reason : '';
+  $('aiResField').classList.toggle('hidden', id !== 'triposr-local');
+}
+$('aiEngine').addEventListener('change', () => { onEngineChange(); updateGoButtons(); });
+
+let aiFile = null, scanFiles = [];
+const busy = { ai: false, scan: false };
+function updateGoButtons() {
+  const info = server?.engines.image[$('aiEngine').value];
+  $('aiGo').disabled = !server || !aiFile || !info?.available || busy.ai;
+  $('scanGo').disabled = !server || !scanFiles.length || !server.engines.photos.photogrammetry.available || busy.scan;
+}
+
+function pickAiFile(f) {
+  if (!f || !f.type.startsWith('image/')) return;
+  aiFile = f;
+  const img = $('aiImg'); if (img.src) URL.revokeObjectURL(img.src);
+  img.src = URL.createObjectURL(f); $('aiPreview').classList.remove('hidden');
+  updateGoButtons();
+}
+function pickScanFiles(list) {
+  scanFiles = [...list].filter(f => f.type.startsWith('image/') || f.type.startsWith('video/') || /\.(mp4|mov|m4v|mkv|avi|webm|heic)$/i.test(f.name));
+  const vids = scanFiles.filter(f => f.type.startsWith('video/') || /\.(mp4|mov|m4v|mkv|avi|webm)$/i.test(f.name)).length;
+  const mb = scanFiles.reduce((a, f) => a + f.size, 0) / 1048576;
+  $('scanList').textContent = scanFiles.length
+    ? `${scanFiles.length - vids} photo(s)${vids ? `, ${vids} video(s)` : ''} · ${mb.toFixed(1)} MB` + (!vids && scanFiles.length < 20 ? '. 20 or more photos are recommended.' : '')
+    : 'No files selected.';
+  updateGoButtons();
+}
+function dropTarget(el, onFiles) {
+  ['dragenter', 'dragover'].forEach(ev => el.addEventListener(ev, e => { e.preventDefault(); el.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => el.addEventListener(ev, e => { e.preventDefault(); el.classList.remove('over'); }));
+  el.addEventListener('drop', e => onFiles(e.dataTransfer.files));
+}
+$('aiFile').addEventListener('change', e => pickAiFile(e.target.files[0]));
+dropTarget($('aiDrop'), fs => pickAiFile(fs[0]));
+$('scanFiles').addEventListener('change', e => pickScanFiles(e.target.files));
+dropTarget($('scanDrop'), pickScanFiles);
+window.addEventListener('paste', e => {
+  if (state.mode !== 'ai') return;
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+  if (item) pickAiFile(item.getAsFile());
+});
+
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmtTime = s => s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${Math.round(s)} s`;
+function renderJob(mode, job) {
+  const box = $(mode === 'ai' ? 'aiJob' : 'scanJob');
+  box.classList.remove('hidden');
+  box.className = 'job ' + (job.status === 'done' ? 'done' : job.status === 'error' ? 'error' : '');
+  const running = job.status === 'queued' || job.status === 'running';
+  const logOpen = box.querySelector('details')?.open ? ' open' : '';
+  const meta = job.status === 'error' ? job.error : job.status === 'cancelled' ? 'Cancelled.'
+    : [job.message, job.elapsed ? fmtTime(job.elapsed) : ''].filter(Boolean).join(' · ');
+  box.innerHTML = `<div class="job-head"><b>${esc(job.stage)}</b>${running ? '<button class="btn" data-cancel>Cancel</button>' : `<span>${Math.round(job.progress * 100)}%</span>`}</div>
+    <div class="bar"><i style="width:${(job.progress * 100).toFixed(1)}%"></i></div>
+    <div class="job-meta">${esc(meta)}</div>
+    <details${logOpen}><summary>Log</summary><pre>${esc((job.log || []).join('\n'))}</pre></details>`;
+  const pre = box.querySelector('pre'); pre.scrollTop = pre.scrollHeight;
+  box.querySelector('[data-cancel]')?.addEventListener('click', () => api('jobs/' + job.id, { method: 'DELETE' }).catch(() => {}));
+}
+
+const polling = {};
+async function pollJob(mode, id) {
+  if (polling[mode] === id) return;
+  polling[mode] = id; busy[mode] = true; updateGoButtons();
+  store.set(JOB_KEY(mode), id);
+  try {
+    while (polling[mode] === id) {
+      let job;
+      try { job = await api('jobs/' + id); }
+      catch (e) { if (/No such job/.test(e.message)) { store.set(JOB_KEY(mode), null); break; } await new Promise(r => setTimeout(r, 3000)); continue; }
+      renderJob(mode, job);
+      if (job.status === 'done') {
+        if (state.models[mode]?.jobId !== id) await showModel(mode, job.result_url, id);
+        break;
+      }
+      if (job.status === 'error' || job.status === 'cancelled') break;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  } finally {
+    if (polling[mode] === id) { polling[mode] = null; busy[mode] = false; updateGoButtons(); loadHistory(); }
+  }
+}
+
+$('aiGo').addEventListener('click', async () => {
+  const fd = new FormData();
+  fd.append('image', aiFile); fd.append('engine', $('aiEngine').value);
+  fd.append('options', JSON.stringify({ resolution: +$('aiRes').value, keep_background: $('aiKeepBg').checked }));
+  busy.ai = true; updateGoButtons();
+  renderJob('ai', { stage: 'Uploading…', progress: 0, status: 'queued', message: '', log: [] });
+  try { const job = await api('jobs/image', { method: 'POST', body: fd }); busy.ai = false; pollJob('ai', job.id); }
+  catch (e) { busy.ai = false; updateGoButtons(); renderJob('ai', { stage: 'Could not start', progress: 0, status: 'error', error: e.message, log: [] }); }
+});
+
+$('scanGo').addEventListener('click', async () => {
+  const fd = new FormData();
+  for (const f of scanFiles) fd.append('files', f, f.name);
+  fd.append('quality', $('scanQuality').value);
+  fd.append('crop', $('scanCrop').checked ? 'true' : 'false');
+  busy.scan = true; updateGoButtons();
+  renderJob('scan', { stage: 'Uploading photos…', progress: 0, status: 'queued', message: '', log: [] });
+  try { const job = await api('jobs/photos', { method: 'POST', body: fd }); busy.scan = false; pollJob('scan', job.id); }
+  catch (e) { busy.scan = false; updateGoButtons(); renderJob('scan', { stage: 'Could not start', progress: 0, status: 'error', error: e.message, log: [] }); }
+});
+
+async function loadHistory() {
+  if (!server || state.mode === 'relief') return;
+  let list = [];
+  try { list = await api('jobs'); } catch { return; }
+  const kind = state.mode === 'ai' ? 'image' : 'photos';
+  const done = list.filter(j => j.kind === kind && j.status === 'done').slice(0, 8);
+  $('historySection').classList.toggle('hidden', !done.length);
+  $('history').innerHTML = done.map(j => `<button class="btn" data-job="${esc(j.id)}" data-url="${esc(j.result_url)}">
+    <b>${esc(j.engine)}</b><span>${new Date(j.created * 1000).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span></button>`).join('');
+}
+$('history').addEventListener('click', e => {
+  const b = e.target.closest('[data-job]'); if (!b) return;
+  showModel(state.mode, b.dataset.url, b.dataset.job).catch(err => { $('exportStatus').textContent = 'Could not open model: ' + err.message; });
+});
+
+checkServer();
+
+// Debug/automation hook.
+window.depthforge = { state, useImage, makeSample, setMode, showModel, get mesh() { return mesh; } };
+</script>
+</body>
+</html>

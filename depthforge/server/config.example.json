@@ -1,0 +1,8 @@
+{
+  "host": "127.0.0.1",
+  "port": 8765,
+  "fal_key": "",
+  "colmap": "",
+  "openmvs": "",
+  "threads": 0
+}
