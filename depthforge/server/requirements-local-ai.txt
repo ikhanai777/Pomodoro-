@@ -1,0 +1,9 @@
+# Optional: local single-image engine (TripoSR on CPU). Install PyTorch first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+omegaconf==2.3.0
+einops>=0.7
+transformers==4.35.0
+huggingface-hub>=0.20,<0.26
+rembg[cpu]>=2.0.50
+onnxruntime>=1.16
+scikit-image>=0.22
