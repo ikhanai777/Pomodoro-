@@ -315,6 +315,7 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
 const DEPTH_MODEL = 'onnx-community/depth-anything-v2-small';
@@ -892,7 +893,7 @@ function placeGroundUnder(root) {
   ground.position.y = box.min.y - 0.01;
 }
 
-const loader = new GLTFLoader();
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); // opens gltfpack-compressed files too
 async function showModel(mode, url, jobId) {
   const gltf = await loader.loadAsync(url);
   const root = new THREE.Group();
