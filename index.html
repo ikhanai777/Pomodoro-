@@ -17,9 +17,11 @@
   #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 
   .hud { position: fixed; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; pointer-events: none; }
+    align-items: center; justify-content: center; pointer-events: none;
+    transition: opacity .6s ease; }
+  body.peek .hud, body.peek .panel, body.peek .top { opacity: 0; }
   .mode { font-size: 13px; letter-spacing: .42em; text-transform: uppercase;
-    color: var(--muted); margin-bottom: 14px; opacity: .9; }
+    color: var(--muted); margin-bottom: 14px; opacity: .9; text-shadow: 0 1px 12px rgba(0,0,0,.8); }
   .ring { position: relative; width: min(64vw, 360px); aspect-ratio: 1; }
   .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
   .ring .track { fill: none; stroke: rgba(255,255,255,.08); stroke-width: 3; }
@@ -29,23 +31,50 @@
     justify-content: center; font-size: clamp(40px, 11vw, 76px); font-weight: 600;
     font-variant-numeric: tabular-nums; letter-spacing: .02em;
     text-shadow: 0 2px 30px rgba(0,0,0,.6); }
-  .sub { margin-top: 10px; font-size: 12px; color: var(--muted); letter-spacing: .2em; }
+  body.has-img .time { text-shadow: 0 2px 24px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.6); }
+  .sub { margin-top: 10px; font-size: 12px; color: var(--muted); letter-spacing: .2em;
+    text-align: center; padding: 0 16px; text-shadow: 0 1px 12px rgba(0,0,0,.8); }
 
-  .panel { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
-    display: flex; gap: 10px; align-items: center; padding: 10px 12px;
-    background: rgba(12,16,30,.42); backdrop-filter: blur(14px);
-    border: 1px solid rgba(255,255,255,.08); border-radius: 16px; pointer-events: auto; }
-  .panel button { font: inherit; font-size: 14px; color: var(--ink); cursor: pointer;
+  .glass { background: rgba(12,16,30,.42); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,.08); border-radius: 16px; transition: opacity .6s ease; }
+  .glass button, .glass select { font: inherit; font-size: 14px; color: var(--ink); cursor: pointer;
     background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.10);
     padding: 10px 16px; border-radius: 11px; transition: .15s; }
-  .panel button:hover { background: rgba(255,255,255,.14); }
-  .panel button.primary { background: linear-gradient(135deg,#5b8cff,#9b6bff); border: none; font-weight: 600; }
-  .panel button:active { transform: scale(.96); }
+  .glass button:hover, .glass select:hover { background: rgba(255,255,255,.14); }
+  .glass button:active { transform: scale(.96); }
+  .glass button:focus-visible, .glass select:focus-visible { outline: 2px solid #7aa8ff; outline-offset: 2px; }
+
+  .panel { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; align-items: center;
+    padding: 10px 12px; width: max-content; max-width: calc(100vw - 32px); }
+  .panel button.primary { background: linear-gradient(135deg,#5b8cff,#9b6bff); border: none; font-weight: 600; min-width: 92px; }
   .presets { display: flex; gap: 6px; }
   .presets button { padding: 9px 12px; font-size: 12px; opacity: .7; }
   .presets button.on { opacity: 1; border-color: rgba(140,180,255,.6); background: rgba(120,160,255,.18); }
+
+  .top { position: fixed; top: 16px; right: 16px; display: flex; gap: 8px; align-items: center;
+    padding: 8px; max-width: calc(100vw - 32px); flex-wrap: wrap; justify-content: flex-end; }
+  .top button, .top select { padding: 8px 12px; font-size: 13px; }
+  .top select { appearance: none; -webkit-appearance: none; padding-right: 28px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 15px) 55%, calc(100% - 10px) 55%;
+    background-size: 5px 5px; background-repeat: no-repeat; }
+  .top select option { background: #0c101e; color: var(--ink); }
+  .top .icon { padding: 8px 11px; }
+  .top [hidden] { display: none; }
+  @media (max-width: 480px) {
+    .top { gap: 6px; padding: 6px; top: 12px; right: 12px; }
+    .top button, .top select { padding: 7px 9px; font-size: 12px; }
+    .top select { padding-right: 24px; }
+  }
+
+  .drop { position: fixed; inset: 12px; border: 2px dashed rgba(140,180,255,.7); border-radius: 22px;
+    display: none; align-items: center; justify-content: center; font-size: 18px; letter-spacing: .1em;
+    background: rgba(8,12,28,.6); pointer-events: none; }
+  body.dragging .drop { display: flex; }
   .err { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
     text-align: center; padding: 30px; color: #ffb4b4; font-size: 14px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 </head>
 <body>
@@ -69,7 +98,21 @@
   <div class="sub" id="sub">the cosmos reveals itself as you focus</div>
 </div>
 
-<div class="panel">
+<div class="top glass">
+  <label class="sr" for="style">Reveal style</label>
+  <select id="style" hidden title="Reveal style">
+    <option value="0">Ink bloom</option>
+    <option value="1">Sketch → paint</option>
+    <option value="2">Mosaic</option>
+    <option value="3">Brushstrokes</option>
+  </select>
+  <button class="icon" id="peek" hidden title="Hold to peek at the full image">Peek</button>
+  <button id="upload" title="Upload an image to reveal (or drop / paste one)">Upload image</button>
+  <button class="icon" id="clear" hidden title="Remove image, back to the cosmos" aria-label="Remove image">✕</button>
+  <input type="file" id="file" accept="image/*" hidden />
+</div>
+
+<div class="panel glass">
   <div class="presets" id="presets">
     <button data-w="25" data-b="5" class="on">25 / 5</button>
     <button data-w="50" data-b="10">50 / 10</button>
@@ -79,19 +122,18 @@
   <button id="reset">Reset</button>
 </div>
 
+<div class="drop">Drop an image to reveal</div>
 <div class="err" id="err">WebGL is unavailable in this browser.</div>
 
 <script>
 (function () {
   "use strict";
   var canvas = document.getElementById("gl");
-  var gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+  var gl = canvas.getContext("webgl", { preserveDrawingBuffer: false }) || canvas.getContext("experimental-webgl");
   if (!gl) { document.getElementById("err").style.display = "flex"; return; }
 
   // ---- shaders ----
-  var VERT = [
-    "attribute vec2 p; void main(){ gl_Position = vec4(p,0.0,1.0); }"
-  ].join("\n");
+  var VERT = "attribute vec2 p; void main(){ gl_Position = vec4(p,0.0,1.0); }";
 
   var FRAG = [
     "precision highp float;",
@@ -99,6 +141,11 @@
     "uniform float u_time;",
     "uniform float u_progress;",   // 0..1 reveal
     "uniform float u_mode;",        // 0 focus, 1 break (color mood)
+    "uniform float u_hasImg;",      // 1 when a user image is loaded
+    "uniform float u_style;",       // 0 bloom, 1 sketch, 2 mosaic, 3 brush
+    "uniform float u_seed;",        // varies the pattern per session
+    "uniform sampler2D u_img;",
+    "uniform vec2 u_imgRes;",
 
     "float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }",
     "float noise(vec2 p){",
@@ -111,6 +158,11 @@
     "  float v=0.0, a=0.5;",
     "  for(int i=0;i<6;i++){ v+=a*noise(p); p*=2.02; a*=0.5; }",
     "  return v;",
+    "}",
+    "float fbm3(vec2 p){",
+    "  float v=0.0, a=0.5;",
+    "  for(int i=0;i<4;i++){ v+=a*noise(p); p*=2.03; a*=0.5; }",
+    "  return v/0.9375;",
     "}",
 
     "vec3 scene(vec2 uv, float t, float mood){",
@@ -147,23 +199,168 @@
     "  return col;",
     "}",
 
+    // ---- user image helpers ----
+    "vec2 coverScale(){",   // 'object-fit: cover' mapping from screen uv to image uv
+    "  float ca = u_res.x/u_res.y, ia = u_imgRes.x/u_imgRes.y;",
+    "  return ca > ia ? vec2(1.0, ia/ca) : vec2(ca/ia, 1.0);",
+    "}",
+    "vec2 cover(vec2 uv){ return (uv-0.5)*coverScale()+0.5; }",
+    "vec3 img(vec2 t){ return texture2D(u_img, clamp(t, 0.0, 1.0)).rgb; }",
+    "float lum(vec3 c){ return dot(c, vec3(0.299,0.587,0.114)); }",
+    "vec3 sat(vec3 c, float s){ return mix(vec3(lum(c)), c, s); }",
+    "float sobel(vec2 t, vec2 px){",
+    "  float tl=lum(img(t+px*vec2(-1.0, 1.0))), tc=lum(img(t+px*vec2(0.0, 1.0))), tr=lum(img(t+px*vec2(1.0, 1.0)));",
+    "  float ml=lum(img(t+px*vec2(-1.0, 0.0))),                                    mr=lum(img(t+px*vec2(1.0, 0.0)));",
+    "  float bl=lum(img(t+px*vec2(-1.0,-1.0))), bc=lum(img(t+px*vec2(0.0,-1.0))), br=lum(img(t+px*vec2(1.0,-1.0)));",
+    "  float gx = (tr+2.0*mr+br) - (tl+2.0*ml+bl);",
+    "  float gy = (tl+2.0*tc+tr) - (bl+2.0*bc+br);",
+    "  return length(vec2(gx,gy));",
+    "}",
+
+    // Ink bloom: pigment spreads from a few seeds along noisy fronts, wet edges darken,
+    // fresh paint bleeds and starts desaturated before drying into full colour.
+    "vec3 styleBloom(vec2 uv, vec2 q, vec2 tuv, vec3 bg, float p, float t){",
+    "  float aspect = u_res.x/u_res.y;",
+    "  float d = 9.0;",
+    "  for(int i=0;i<5;i++){",
+    "    float fi = float(i);",
+    "    vec2 s = vec2(0.12 + 0.76*hash(vec2(fi*1.7+u_seed, 3.1)), 0.12 + 0.76*hash(vec2(u_seed, fi*2.3+9.0)));",
+    "    s.x *= aspect;",
+    "    d = min(d, length(q - s) * (0.8 + 0.4*hash(vec2(fi, u_seed+1.0))));",
+    "  }",
+    "  float field = d / max(aspect, 1.0) + 0.55*fbm3(q*2.6 + u_seed) + 0.08*fbm3(q*14.0 - u_seed);",
+    "  float th = mix(0.0, 0.9, p);",
+    "  float m = smoothstep(th, th-0.05, field);",
+    "  float edge = smoothstep(0.045, 0.0, abs(field-th)) * step(0.001, p);",
+    "  float age = clamp((th - field)/0.3, 0.0, 1.0);",
+    "  vec2 wob = (vec2(fbm3(q*7.0 + t*0.15), fbm3(q*7.0 + 3.1 - t*0.15)) - 0.5) * 0.025 * (1.0-age);",
+    "  vec3 a = sat(img(tuv + wob), 0.35 + 0.65*age);",
+    "  a *= 1.0 - 0.45*edge;",
+    "  vec3 col = mix(bg, a, m);",
+    "  col += edge * (1.0-m) * vec3(1.0,0.82,0.55) * 0.35;",   // glowing leading edge
+    "  return col;",
+    "}",
+
+    // Sketch → paint: luminous line art is drawn, watercolour washes flood in, then detail sharpens.
+    "vec3 styleSketch(vec2 uv, vec2 q, vec2 tuv, vec3 bg, float p, float t){",
+    "  vec2 px = max(coverScale()/u_res * 1.4, 1.0/u_imgRes);",
+    "  float e = smoothstep(0.10, 0.45, sobel(tuv, px));",
+    "  float n1 = clamp((fbm3(q*2.2 + u_seed) - 0.25)/0.5, 0.0, 1.0);",
+    "  float n2 = clamp((fbm3(q*1.6 - u_seed*1.3 + 7.0) - 0.25)/0.5, 0.0, 1.0);",
+    "  float lp = smoothstep(0.0, 0.40, p);",
+    "  float wp = smoothstep(0.28, 0.80, p);",
+    "  float dp = smoothstep(0.72, 1.0, p);",
+    "  float lineOn = smoothstep(n1 - 0.12, n1, lp*1.12);",
+    "  float washOn = smoothstep(n2 - 0.18, n2, wp*1.18);",
+    // soft, pooled watercolour: blurred + slightly posterised + paper grain
+    "  float r = 7.0 * max(coverScale().x/u_res.x, coverScale().y/u_res.y) * u_res.y / 360.0;",
+    "  vec3 wash = img(tuv)*0.2 + img(tuv+vec2(r,0.0))*0.2 + img(tuv-vec2(r,0.0))*0.2 + img(tuv+vec2(0.0,r))*0.2 + img(tuv-vec2(0.0,r))*0.2;",
+    "  wash = mix(wash, floor(wash*6.0+0.5)/6.0, 0.35);",
+    "  wash = sat(wash, 1.15) * (0.92 + 0.12*fbm3(q*30.0));",
+    "  float pool = smoothstep(0.0, 0.2, washOn) - smoothstep(0.2, 1.0, washOn);",   // darker pigment at wash rims
+    "  wash *= 1.0 - 0.25*pool;",
+    "  vec3 ink = vec3(1.0,0.9,0.72) * e * lineOn;",
+    "  vec3 col = bg + ink*0.85;",
+    "  col = mix(col, wash + ink*0.12, washOn*0.94);",
+    "  col = mix(col, img(tuv), dp);",
+    "  return col;",
+    "}",
+
+    // Mosaic: tiles flip in at random, then subdivide from coarse to fine until the image is sharp.
+    "vec3 styleMosaic(vec2 uv, vec2 q, vec2 tuv, vec3 bg, float p, float t){",
+    "  float aspect = u_res.x/u_res.y;",
+    "  float cells = floor(mix(7.0, 180.0, p*p*p));",
+    "  vec2 g = q*cells; vec2 id = floor(g); vec2 f = fract(g);",
+    "  vec2 cuv = (id+0.5)/cells; cuv.x /= aspect;",
+    "  vec3 tile = img(cover(cuv));",
+    "  vec2 cid = floor(q*7.0);",
+    "  float h = hash(cid + u_seed);",
+    "  float appear = smoothstep(h*0.45, h*0.45+0.06, p);",
+    "  float bevel = min(min(f.x,f.y), min(1.0-f.x,1.0-f.y));",
+    "  float bev = mix(0.72, 1.0, smoothstep(0.0, 0.09, bevel));",
+    "  float gloss = smoothstep(0.35, 0.0, length(f - vec2(0.3,0.7))) * 0.12;",
+    "  float k = 1.0 - smoothstep(0.55, 0.9, p);",    // bevels fade as tiles get tiny
+    "  tile = tile*mix(1.0, bev, k) + gloss*k;",
+    "  vec3 col = mix(bg, tile, appear);",
+    "  col = mix(col, img(tuv), smoothstep(0.82, 1.0, p));",
+    "  return col;",
+    "}",
+
+    // Brushstrokes: one layer of stroke stamps on a jittered grid. Each stroke follows a flow field,
+    // is swept in along its length when its turn comes, and carries the colour under its centre.
+    // Returns the most recently painted stroke covering this pixel (rgb) and its coverage (a).
+    "vec4 strokes(vec2 q, vec2 tuv, float cell, float t0, float t1, float p, float detail){",
+    "  float aspect = u_res.x/u_res.y;",
+    "  vec2 id0 = floor(q/cell);",
+    "  float bestAt = -1.0, cov = 0.0; vec2 bestC = vec2(0.0); vec2 bestL = vec2(0.0); float bestH = 0.0;",
+    "  for (int j=-1; j<=1; j++) for (int i=-1; i<=1; i++) {",
+    "    vec2 id = id0 + vec2(float(i), float(j));",
+    "    float h = hash(id + u_seed*1.37 + cell*31.0);",
+    "    float at = mix(t0, t1, h);",
+    "    if (at > p) continue;",
+    "    vec2 c = (id + 0.5 + (vec2(hash(id+3.7+u_seed), hash(id+9.1-u_seed)) - 0.5)*0.9) * cell;",
+    "    float ang = fbm3(c*1.1 + u_seed)*6.2831;",
+    "    vec2 dir = vec2(cos(ang), sin(ang));",
+    "    vec2 d = q - c; vec2 l = vec2(dot(d, dir), dot(d, vec2(-dir.y, dir.x)));",
+    "    float L = cell*1.25, W = cell*0.5;",
+    "    float grow = clamp((p - at)/0.05, 0.0, 1.0);",      // stroke sweeps in over a short time
+    "    float along = (l.x + L)/(2.0*L);",
+    "    float taper = W*(1.0 - 0.55*pow(abs(l.x/L), 3.0));",
+    "    float rag = 0.18*W*(noise(vec2(l.x/L*9.0, h*40.0)) - 0.5);",   // ragged bristle edges
+    "    float aa = 1.5/u_res.y;",
+    "    float m = smoothstep(taper + rag + aa, taper + rag - aa, abs(l.y))",
+    "            * smoothstep(L + aa, L - aa, abs(l.x))",
+    "            * smoothstep(grow + 0.02, grow - 0.02, along);",
+    "    if (m > 0.02 && at > bestAt) { bestAt = at; cov = m; bestC = c; bestL = l/vec2(L, W); bestH = h; }",
+    "  }",
+    "  if (bestAt < 0.0) return vec4(0.0);",
+    "  vec3 paint = img(cover(vec2(bestC.x/aspect, bestC.y)));",
+    "  paint = mix(paint, img(tuv), detail);",
+    "  paint *= 0.94 + 0.12*bestH;",                                      // per-stroke value shift
+    "  paint *= 0.86 + 0.24*noise(vec2(bestL.x*2.0, bestL.y*14.0 + bestH*50.0));",  // bristle streaks
+    "  return vec4(paint, cov);",
+    "}",
+    "vec3 styleBrush(vec2 uv, vec2 q, vec2 tuv, vec3 bg, float p, float t){",
+    "  vec3 col = bg;",
+    "  vec4 s1 = strokes(q, tuv, 0.15, 0.00, 0.45, p, 0.10);",   // broad underpainting
+    "  col = mix(col, s1.rgb, s1.a);",
+    "  vec4 s2 = strokes(q, tuv, 0.06, 0.35, 0.82, p, 0.40);",   // smaller detail strokes on top
+    "  col = mix(col, s2.rgb, s2.a);",
+    "  col = mix(col, img(tuv), smoothstep(0.80, 1.0, p));",
+    "  return col;",
+    "}",
+
     "void main(){",
     "  vec2 uv = gl_FragCoord.xy / u_res;",
     "  float aspect = u_res.x/u_res.y;",
     "  vec2 c = uv - 0.5; c.x *= aspect;",
     "  float t = u_time;",
-    "  vec3 full = scene(uv, t, u_mode);",
-    "  // hidden (locked) version: dim, cool, almost black",
-    "  vec3 hidden = full*0.03 + vec3(0.012,0.016,0.03);",
-    "  // iris reveal grows with progress",
-    "  float revealR = u_progress * 1.25;",
-    "  float edge = smoothstep(revealR, revealR-0.04, length(c));",  // 1 inside
-    "  vec3 col = mix(hidden, full, edge);",
-    "  // bright ring at the reveal boundary",
-    "  float ring = smoothstep(0.035, 0.0, abs(length(c) - revealR));",
-    "  col += ring * vec3(0.55,0.8,1.0) * 0.9 * step(0.001, u_progress) * step(u_progress, 0.999);",
-    "  // gentle vignette",
-    "  col *= 1.0 - 0.35*dot(c,c);",
+    "  vec3 col;",
+    "  if (u_hasImg > 0.5) {",
+    "    vec2 q = uv * vec2(aspect, 1.0);",
+    "    vec2 tuv = cover(uv);",
+    "    float p = clamp(u_progress, 0.0, 1.0);",
+    "    vec3 bg = scene(uv, t, u_mode)*0.07 + vec3(0.010,0.013,0.024);",   // dim cosmos canvas
+    "    if (u_style < 0.5) col = styleBloom(uv, q, tuv, bg, p, t);",
+    "    else if (u_style < 1.5) col = styleSketch(uv, q, tuv, bg, p, t);",
+    "    else if (u_style < 2.5) col = styleMosaic(uv, q, tuv, bg, p, t);",
+    "    else col = styleBrush(uv, q, tuv, bg, p, t);",
+    "    col = mix(col, img(tuv), smoothstep(0.985, 1.0, p));",
+    "    col *= 1.0 - 0.22*dot(c,c);",
+    "  } else {",
+    "    vec3 full = scene(uv, t, u_mode);",
+    "    // hidden (locked) version: dim, cool, almost black",
+    "    vec3 hidden = full*0.03 + vec3(0.012,0.016,0.03);",
+    "    // iris reveal grows with progress",
+    "    float revealR = u_progress * 1.25;",
+    "    float edge = smoothstep(revealR, revealR-0.04, length(c));",  // 1 inside
+    "    col = mix(hidden, full, edge);",
+    "    // bright ring at the reveal boundary",
+    "    float ring = smoothstep(0.035, 0.0, abs(length(c) - revealR));",
+    "    col += ring * vec3(0.55,0.8,1.0) * 0.9 * step(0.001, u_progress) * step(u_progress, 0.999);",
+    "    // gentle vignette",
+    "    col *= 1.0 - 0.35*dot(c,c);",
+    "  }",
     "  gl_FragColor = vec4(col, 1.0);",
     "}"
   ].join("\n");
@@ -193,6 +390,22 @@
   var uTime = gl.getUniformLocation(prog, "u_time");
   var uProg = gl.getUniformLocation(prog, "u_progress");
   var uMode = gl.getUniformLocation(prog, "u_mode");
+  var uHasImg = gl.getUniformLocation(prog, "u_hasImg");
+  var uStyle = gl.getUniformLocation(prog, "u_style");
+  var uSeed = gl.getUniformLocation(prog, "u_seed");
+  var uImgRes = gl.getUniformLocation(prog, "u_imgRes");
+  gl.uniform1i(gl.getUniformLocation(prog, "u_img"), 0);
+
+  // ---- image texture (1x1 placeholder until the user uploads one) ----
+  var tex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0,255]));
+  var hasImg = false, imgW = 1, imgH = 1;
 
   function resize(){
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -204,9 +417,10 @@
   window.addEventListener("resize", resize); resize();
 
   // ---- timer state ----
-  var WORK = 4, BREAK = 3;
+  var WORK = 25*60, BREAK = 5*60;
   var total = WORK, remaining = WORK, mode = 0; // 0 focus, 1 break
-  var running = false, endAt = 0, raf = 0, startedAt = 0;
+  var running = false, endAt = 0, raf = 0;
+  var seed = Math.random()*100;
 
   var $time = document.getElementById("time");
   var $mode = document.getElementById("mode");
@@ -216,6 +430,16 @@
   var C = 2 * Math.PI * 54;
   $prog.style.strokeDasharray = C;
 
+  var notice = "", noticeTimer = 0;
+  function toast(msg){   // briefly replaces the subtitle
+    notice = msg; render();
+    clearTimeout(noticeTimer); noticeTimer = setTimeout(function(){ notice = ""; render(); }, 2600);
+  }
+  function subText(){
+    if (notice) return notice;
+    if (mode === 1) return hasImg ? "rest — your picture is complete" : "rest — the art stays with you";
+    return hasImg ? "your image reveals itself as you focus" : "the cosmos reveals itself as you focus";
+  }
   function fmt(s){
     s = Math.max(0, Math.ceil(s));
     var m = Math.floor(s/60), ss = s%60;
@@ -225,23 +449,29 @@
     $time.textContent = fmt(remaining);
     var p = total>0 ? 1 - remaining/total : 0;
     $prog.style.strokeDashoffset = C * (1 - p);
+    $sub.textContent = subText();
+    document.title = running ? fmt(remaining) + " · " + (mode ? "Break" : "Focus") + " — Reveal" : "Reveal — WebGL Pomodoro";
   }
   function tick(now){
     if (running){
       remaining = (endAt - now)/1000;
       if (remaining <= 0){
-        remaining = 0; render(); phaseComplete(); return;
+        remaining = 0; raf = 0; render(); phaseComplete(); return;
       }
       render();
     }
     raf = requestAnimationFrame(tick);
   }
+  function setPhase(m){
+    running = false; mode = m;
+    total = remaining = (m === 0 ? WORK : BREAK);
+    $mode.textContent = m === 0 ? "Focus" : "Break";
+    $start.textContent = "Start";
+    if (m === 0) seed = Math.random()*100;  // each focus session reveals along a new path
+    render();
+  }
   function phaseComplete(){
-    running = false;
-    // switch phase
-    if (mode === 0){ mode = 1; total = BREAK; remaining = BREAK; $mode.textContent = "Break"; $sub.textContent = "rest — the art stays with you"; }
-    else { mode = 0; total = WORK; remaining = WORK; $mode.textContent = "Focus"; $sub.textContent = "the cosmos reveals itself as you focus"; }
-    $start.textContent = "Start"; render();
+    setPhase(mode === 0 ? 1 : 0);
     notify();
   }
   function notify(){
@@ -253,38 +483,164 @@
       g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+0.6); o.start(); o.stop(a.currentTime+0.65);
     } catch(e){}
   }
-
-  $start.addEventListener("click", function(){
-    if (running){ running=false; $start.textContent="Resume"; return; }
+  function toggle(){
+    if (running){ running=false; $start.textContent="Resume"; render(); return; }
     running = true; $start.textContent = "Pause";
     endAt = performance.now() + remaining*1000;
     if (!raf) raf = requestAnimationFrame(tick);
-  });
-  document.getElementById("reset").addEventListener("click", function(){
-    running=false; $start.textContent="Start"; mode=0; total=WORK; remaining=WORK;
-    $mode.textContent="Focus"; $sub.textContent="the cosmos reveals itself as you focus";
-    render();
-  });
+  }
+
+  $start.addEventListener("click", toggle);
+  document.getElementById("reset").addEventListener("click", function(){ setPhase(0); });
   document.getElementById("presets").addEventListener("click", function(e){
     var b = e.target.closest("button"); if(!b) return;
     [].forEach.call(this.children, function(x){ x.classList.remove("on"); });
     b.classList.add("on");
     WORK = (+b.dataset.w)*60; BREAK = (+b.dataset.b)*60;
-    running=false; $start.textContent="Start"; mode=0; total=WORK; remaining=WORK;
-    $mode.textContent="Focus"; render();
+    setPhase(0);
+  });
+  document.addEventListener("keydown", function(e){
+    if (e.target.closest && e.target.closest("button, select, input")) return;
+    if (e.code === "Space"){ e.preventDefault(); toggle(); }
   });
 
+  // ---- image upload / persistence ----
+  var MAX_SIDE = 2048;
+  var $style = document.getElementById("style");
+  var $file = document.getElementById("file");
+  var $clear = document.getElementById("clear");
+  var $peek = document.getElementById("peek");
+  var $upload = document.getElementById("upload");
+  var style = 0;
+
+  // Small IndexedDB key/value store so the image survives reloads (localStorage is too small for images).
+  function idb(){
+    return new Promise(function(res, rej){
+      var r = indexedDB.open("reveal", 1);
+      r.onupgradeneeded = function(){ r.result.createObjectStore("kv"); };
+      r.onsuccess = function(){ res(r.result); };
+      r.onerror = function(){ rej(r.error); };
+    });
+  }
+  function idbDo(modeRW, fn){
+    return idb().then(function(db){
+      return new Promise(function(res, rej){
+        var tx = db.transaction("kv", modeRW), req = fn(tx.objectStore("kv"));
+        tx.oncomplete = function(){ res(req && req.result); db.close(); };
+        tx.onerror = function(){ rej(tx.error); db.close(); };
+      });
+    });
+  }
+  function saveBlob(blob){ return idbDo("readwrite", function(s){ return s.put(blob, "image"); }).catch(function(){}); }
+  function loadBlob(){ return idbDo("readonly", function(s){ return s.get("image"); }).catch(function(){ return null; }); }
+  function dropBlob(){ return idbDo("readwrite", function(s){ return s.delete("image"); }).catch(function(){}); }
+
+  function decode(blob){
+    return new Promise(function(res, rej){
+      var url = URL.createObjectURL(blob), im = new Image();
+      im.onload = function(){ URL.revokeObjectURL(url); res(im); };
+      im.onerror = function(){ URL.revokeObjectURL(url); rej(new Error("decode")); };
+      im.src = url;
+    });
+  }
+  // Downscale to fit GPU limits (and keep the stored copy small).
+  function toCanvas(im){
+    var lim = Math.min(MAX_SIDE, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+    var w = im.naturalWidth, h = im.naturalHeight, k = Math.min(1, lim / Math.max(w, h));
+    var cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.round(w*k)); cv.height = Math.max(1, Math.round(h*k));
+    cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+    return cv;
+  }
+  function useImage(cv){
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    imgW = cv.width; imgH = cv.height; hasImg = true;
+    document.body.classList.add("has-img");
+    $style.hidden = $clear.hidden = $peek.hidden = false;
+    $upload.textContent = "Change image";
+    render();
+  }
+  function handleFile(file){
+    if (!file || !/^image\//.test(file.type)){ if (file) toast("That file isn't an image"); return; }
+    decode(file).then(function(im){
+      var cv = toCanvas(im);
+      useImage(cv);
+      seed = Math.random()*100;
+      toast("Image set — it will reveal as you focus");
+      cv.toBlob(function(b){ if (b) saveBlob(b); }, "image/jpeg", 0.9);
+    }).catch(function(){ toast("Couldn't read that image"); });
+  }
+  function clearImage(){
+    hasImg = false; imgW = imgH = 1;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0,255]));
+    document.body.classList.remove("has-img");
+    $style.hidden = $clear.hidden = $peek.hidden = true;
+    $upload.textContent = "Upload image";
+    dropBlob(); render();
+  }
+
+  $upload.addEventListener("click", function(){ $file.click(); });
+  $file.addEventListener("change", function(){ handleFile(this.files && this.files[0]); this.value = ""; });
+  $clear.addEventListener("click", clearImage);
+  $style.addEventListener("change", function(){
+    style = +this.value;
+    try { localStorage.setItem("reveal-style", String(style)); } catch(e){}
+  });
+  try { var saved = localStorage.getItem("reveal-style"); if (saved !== null && +saved >= 0 && +saved <= 3){ style = +saved; $style.value = saved; } } catch(e){}
+
+  // Hold "Peek" to see the finished image for a moment (HUD fades out).
+  var peeking = false;
+  function peek(on){ peeking = on && hasImg; document.body.classList.toggle("peek", peeking); }
+  $peek.addEventListener("pointerdown", function(e){ e.preventDefault(); peek(true); });
+  ["pointerup","pointerleave","pointercancel"].forEach(function(ev){ $peek.addEventListener(ev, function(){ peek(false); }); });
+  window.addEventListener("blur", function(){ peek(false); });
+
+  // Drag & drop and paste
+  var dragDepth = 0;
+  window.addEventListener("dragenter", function(e){ e.preventDefault(); dragDepth++; document.body.classList.add("dragging"); });
+  window.addEventListener("dragover", function(e){ e.preventDefault(); });
+  window.addEventListener("dragleave", function(){ if (--dragDepth <= 0){ dragDepth = 0; document.body.classList.remove("dragging"); } });
+  window.addEventListener("drop", function(e){
+    e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
+    handleFile(e.dataTransfer && e.dataTransfer.files[0]);
+  });
+  window.addEventListener("paste", function(e){
+    var items = (e.clipboardData && e.clipboardData.items) || [];
+    for (var i = 0; i < items.length; i++){
+      if (items[i].kind === "file" && /^image\//.test(items[i].type)){ handleFile(items[i].getAsFile()); return; }
+    }
+  });
+
+  loadBlob().then(function(b){ if (b) return decode(b).then(function(im){ useImage(toCanvas(im)); }); }).catch(function(){});
+
+  // Preview hook: open with #p=0.5 to freeze the reveal at a given progress.
+  function previewProgress(){
+    var m = /(?:^|[#&])p=([0-9.]+)/.exec(location.hash);
+    return m ? Math.min(1, Math.max(0, parseFloat(m[1]))) : -1;
+  }
+
   // ---- render loop (shader) ----
-  var t0 = performance.now();
+  var t0 = performance.now(), shown = 0;
   function frame(now){
     resize();
     var p = total>0 ? 1 - remaining/total : 0;
     // during break, keep the art fully revealed (p stays 1)
-    var reveal = (mode === 1) ? 1.0 : p;
+    var target = peeking ? 1.0 : (mode === 1) ? 1.0 : p;
+    // ease toward the target so resets, peeks and phase changes animate instead of snapping
+    shown += (target - shown) * (Math.abs(target - shown) > 0.02 ? 0.08 : 1.0);
+    var pv = previewProgress(); if (pv >= 0) shown = pv;
     gl.uniform2f(uRes, canvas.width, canvas.height);
     gl.uniform1f(uTime, (now - t0)/1000);
-    gl.uniform1f(uProg, reveal);
+    gl.uniform1f(uProg, shown);
     gl.uniform1f(uMode, mode);
+    gl.uniform1f(uHasImg, hasImg ? 1 : 0);
+    gl.uniform1f(uStyle, style);
+    gl.uniform1f(uSeed, seed);
+    gl.uniform2f(uImgRes, imgW, imgH);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     requestAnimationFrame(frame);
   }

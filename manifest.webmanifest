@@ -1,7 +1,7 @@
 {
   "name": "Reveal — WebGL Pomodoro",
   "short_name": "Reveal",
-  "description": "A Pomodoro timer that reveals a magnificent cosmos as you focus.",
+  "description": "A Pomodoro timer that reveals your own image — or a magnificent cosmos — as you focus.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
